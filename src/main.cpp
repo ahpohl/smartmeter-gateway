@@ -1,98 +1,80 @@
-#include "Smartmeter.h"
-#include <csignal>
-#include <getopt.h>
+#include "config.h"
+#include "config_yaml.h"
+#include "logger.h"
+// #include "modbus_slave.h"
+#include "mqtt_client.h"
+#include "signal_handler.h"
+#include <CLI/CLI.hpp>
+#include <cstdlib>
 #include <iostream>
-#include <memory>
+#include <nlohmann/json.hpp>
 
-volatile sig_atomic_t shutdown = false;
-
-void sig_handler(int) { shutdown = true; }
+using json = nlohmann::json;
 
 int main(int argc, char *argv[]) {
-  struct sigaction action;
-  action.sa_handler = sig_handler;
-  sigemptyset(&action.sa_mask);
-  action.sa_flags = SA_RESTART;
-  sigaction(SIGINT, &action, NULL);
-  sigaction(SIGTERM, &action, NULL);
 
-  bool version = false;
-  bool help = false;
+  // --- Command line parsing ---
+  CLI::App app{PROJECT_NAME " - " PROJECT_DESCRIPTION};
+
+  // Version string
+  std::string versionStr = std::string(PROJECT_NAME) + " v" + PROJECT_VERSION +
+                           " (" + GIT_COMMIT_HASH + ")";
+
+  app.set_version_flag("-V,--version", versionStr);
+
   std::string config;
+  auto configOption = app.add_option("-c,--config", config, "Set config file")
+                          ->required()
+                          ->envname("FRONIUS_CONFIG")
+                          ->check(CLI::ExistingFile);
 
-  const struct option longOpts[] = {{"help", no_argument, nullptr, 'h'},
-                                    {"version", no_argument, nullptr, 'V'},
-                                    {"config", required_argument, nullptr, 'c'},
-                                    {nullptr, 0, nullptr, 0}};
+  // Optional: prevent specifying both at the same time in help/UX
+  configOption->excludes("--version");
 
-  const char optString[] = "hVvc:";
-  int opt = 0;
-  int longIndex = 0;
+  CLI11_PARSE(app, argc, argv);
 
-  do {
-    opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
-    switch (opt) {
-    case 'h':
-      help = true;
-      break;
-    case 'V':
-      version = true;
-      break;
-    case 'c':
-      config = optarg;
-      break;
-    default:
-      break;
-    }
-
-  } while (opt != -1);
-
-  if (help) {
-    std::cout << "Energy Smartmeter " << VERSION_TAG << std::endl;
-    std::cout << std::endl
-              << "Usage: " << argv[0] << " [-vvv] -c [file]" << std::endl;
-    std::cout << "\n\
-  -h --help         Show help message\n\
-  -V --version      Show build info\n\
-  -c --config       Set config file"
-              << std::endl
-              << std::endl;
-    return EXIT_SUCCESS;
-  }
-
-  if (version) {
-    std::cout << "Version " << VERSION_TAG << " (" << VERSION_BUILD
-              << ") built " << VERSION_BUILD_DATE << " by "
-              << VERSION_BUILD_MACHINE << std::endl;
-    return EXIT_SUCCESS;
-  }
-
-  std::cout << "Smartmeter " << VERSION_TAG << " (" << VERSION_BUILD << ")"
-            << std::endl;
-
-  std::unique_ptr<Smartmeter> meter(new Smartmeter());
-
-  if (!meter->Setup(config)) {
-    std::cout << meter->GetErrorMessage() << std::endl;
+  // --- Load config ---
+  Config cfg;
+  try {
+    cfg = loadConfig(config);
+  } catch (const std::exception &ex) {
+    std::cerr << "Error loading config: " << ex.what() << "\n";
     return EXIT_FAILURE;
   }
 
-  static int timeout = 0;
+  // --- Setup logging ---
+  setupLogging(cfg.logger);
+  std::shared_ptr<spdlog::logger> mainLogger = spdlog::get("main");
+  if (!mainLogger)
+    mainLogger = spdlog::default_logger();
+  mainLogger->info("Starting {} with config '{}'", PROJECT_NAME, config);
 
-  while (shutdown == false) {
-    if (!meter->Receive()) {
-      if (timeout < 5) {
-        std::cout << meter->GetErrorMessage() << std::endl;
-        ++timeout;
-      }
-      continue;
-    } else {
-      timeout = 0;
-    }
-    if (!meter->Publish()) {
-      std::cout << meter->GetErrorMessage() << std::endl;
-    }
-  }
+  // --- Setup signals and shutdown
+  SignalHandler handler;
+
+  // --- Start ModbusSlave
+  // ModbusSlave slave(cfg.modbus, handler);
+
+  // --- Start MQTT consumer ---
+  MqttClient mqtt(cfg.mqtt, handler);
+  /*
+  slave.setValueCallback([&mqtt, &cfg](const std::string &jsonDump) {
+    mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
+  });
+  slave.setEventCallback([&mqtt, &cfg](const std::string &jsonDump) {
+    mqtt.publish(jsonDump, cfg.mqtt.topic + "/events");
+  });
+  slave.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump) {
+    mqtt.publish(jsonDump, cfg.mqtt.topic + "/device");
+  });
+  */
+
+  // --- Wait for shutdown signal ---
+  handler.wait();
+
+  // --- Shutdown ---
+  mainLogger->info("Shutting down due to signal {} ({})", handler.signalName(),
+                   handler.signal());
 
   return EXIT_SUCCESS;
 }
