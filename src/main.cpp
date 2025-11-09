@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include "meter.h"
 
 using json = nlohmann::json;
 
@@ -25,7 +26,7 @@ int main(int argc, char *argv[]) {
   std::string config;
   auto configOption = app.add_option("-c,--config", config, "Set config file")
                           ->required()
-                          ->envname("FRONIUS_CONFIG")
+                          ->envname("METER_CONFIG")
                           ->check(CLI::ExistingFile);
 
   // Optional: prevent specifying both at the same time in help/UX
@@ -57,17 +58,6 @@ int main(int argc, char *argv[]) {
 
   // --- Start MQTT consumer ---
   MqttClient mqtt(cfg.mqtt, handler);
-  /*
-  slave.setValueCallback([&mqtt, &cfg](const std::string &jsonDump) {
-    mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
-  });
-  slave.setEventCallback([&mqtt, &cfg](const std::string &jsonDump) {
-    mqtt.publish(jsonDump, cfg.mqtt.topic + "/events");
-  });
-  slave.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump) {
-    mqtt.publish(jsonDump, cfg.mqtt.topic + "/device");
-  });
-  */
 
   // --- Wait for shutdown signal ---
   handler.wait();

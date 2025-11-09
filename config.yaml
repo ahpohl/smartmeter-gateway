@@ -1,9 +1,17 @@
+meter:
+  device: /dev/ttyUSB0
+  baud: 9600
+  data_bits: 7
+  stop_bits: 1
+  parity: even   # none | even | odd
+  update_interval: 5
+
 modbus:
   tcp:
     listen: 0.0.0.0
     port: 502
   rtu:
-    device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AC009Y6C-if00-port0
+    device: /dev/ttyUSB1
     baud: 9600
   slave_id: 1
   indication_timeout:
@@ -27,5 +35,6 @@ logger:
   level: info     # global default: off | error | warn | info | debug | trace
   modules:
     main: info
+    meter: debug
     modbus: info
-    mqtt: debug
+    mqtt: info

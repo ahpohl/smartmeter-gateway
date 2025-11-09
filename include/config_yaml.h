@@ -6,6 +6,22 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
+// --- Meter config ---
+enum class SerialParity {
+  None,
+  Even,
+  Odd
+};
+
+struct MeterConfig {
+  std::string device;
+  int baud;
+  int dataBits;
+  int stopBits;
+  SerialParity parity;
+  int updateInterval;
+};
+
 // --- Modbus TCP config ---
 struct ModbusTcpConfig {
   std::string host;

@@ -19,7 +19,7 @@ endif()
 string(REGEX REPLACE "^v" "" GIT_TAG_STRIPPED "${GIT_TAG}")
 
 # Set some basic project attributes
-project (fronius-bridge
+project (smartmeter-gateway
 	DESCRIPTION "Protocol gateway for domestic meter telemetry"
 	VERSION ${GIT_TAG_STRIPPED}
 	LANGUAGES CXX
@@ -69,9 +69,10 @@ pkg_check_modules(MOSQUITTO REQUIRED IMPORTED_TARGET libmosquitto)
 # --- Sources ---
 set(SRC_FILES
     src/main.cpp
-    #src/modbus_slave.cpp
     src/config_yaml.cpp
     src/mqtt_client.cpp
+    src/meter.cpp
+    #src/modbus_slave.cpp
 )
 
 # --- Executable ---
