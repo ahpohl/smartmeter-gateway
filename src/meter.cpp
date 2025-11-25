@@ -4,7 +4,6 @@
 #include "signal_handler.h"
 #include <chrono>
 #include <expected>
-#include <iostream>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
@@ -35,6 +34,9 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
   meterLogger_ = spdlog::get("meter");
   if (!meterLogger_)
     meterLogger_ = spdlog::default_logger();
+
+  // Start update loop thread
+  worker_ = std::thread(&Meter::runLoop, this);
 }
 
 Meter::~Meter() {}
@@ -107,16 +109,14 @@ std::expected<void, std::runtime_error> Meter::updateValuesAndJson() {
           values.phase3.voltage = std::stod(value_unit.substr(0, pos));
         }
       } else {
-        throw std::runtime_error(
-            "line is neither empty, a start marker ('/'), an end marker ('!'), "
-            "nor a recognized OBIS code: " +
-            line);
+        throw std::runtime_error("Malformed OBEX expression: " + line);
       }
 
     } catch (const std::exception &e) {
-      return std::unexpected(
-          std::runtime_error(std::string("Parsing failed at line ") +
-                             std::to_string(lineNum) + ": " + e.what()));
+      return std::unexpected(std::runtime_error(
+          std::string(
+              "updateValuesAndJson(): Telegram parsing failed at line ") +
+          std::to_string(lineNum) + ": " + e.what()));
     }
   }
 
@@ -160,4 +160,37 @@ std::expected<void, std::runtime_error> Meter::updateValuesAndJson() {
   meterLogger_->debug("{}", json_.dump());
 
   return {};
+}
+
+void Meter::runLoop() {
+  while (handler_.isRunning()) {
+
+    auto update = updateValuesAndJson();
+    if (!update) {
+      meterLogger_->error("{}", update.error().what());
+      handler_.shutdown();
+    } else {
+      std::lock_guard<std::mutex> lock(cbMutex_);
+      if (updateCallback_) {
+        try {
+          updateCallback_(json_.dump());
+        } catch (const std::exception &ex) {
+          meterLogger_->error("FATAL error in Meter update callback: {}",
+                              ex.what());
+          handler_.shutdown();
+        }
+      }
+    }
+
+    std::unique_lock<std::mutex> lock(cbMutex_);
+    cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
+                 [this] { return !handler_.isRunning(); });
+  }
+
+  meterLogger_->debug("Meter run loop stopped.");
+}
+
+void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
+  std::lock_guard<std::mutex> lock(cbMutex_);
+  updateCallback_ = std::move(cb);
 }

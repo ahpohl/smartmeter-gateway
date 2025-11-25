@@ -54,7 +54,6 @@ private:
   mutable std::mutex cbMutex_;
   std::thread worker_;
   std::condition_variable cv_;
-  std::atomic<bool> connected_{false};
 };
 
 #endif /* METER_H_ */
