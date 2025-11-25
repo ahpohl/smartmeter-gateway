@@ -5,10 +5,13 @@
 #include "signal_handler.h"
 #include <atomic>
 #include <condition_variable>
+#include <expected>
 #include <functional>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <spdlog/logger.h>
+#include <stdexcept>
+#include <string>
 #include <thread>
 
 class Meter {
@@ -32,6 +35,7 @@ public:
 
   std::string getJsonDump(void) const;
   Values getValues(void) const;
+  std::expected<void, std::runtime_error> updateValuesAndJson(void);
 
   void setUpdateCallback(std::function<void(const std::string &)> cb);
 
@@ -40,6 +44,7 @@ private:
 
   const MeterConfig &cfg_;
   Values values_;
+  std::string telegram_;
   nlohmann::ordered_json json_;
   std::shared_ptr<spdlog::logger> meterLogger_;
 

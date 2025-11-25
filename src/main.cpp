@@ -56,11 +56,16 @@ int main(int argc, char *argv[]) {
   // --- Start meter
   Meter meter(cfg.meter, handler);
 
+  auto result = meter.updateValuesAndJson();
+  if (!result) {
+    mainLogger->error("{}", result.error().what());
+  }
+
   // --- Start MQTT consumer ---
-  MqttClient mqtt(cfg.mqtt, handler);
+  // MqttClient mqtt(cfg.mqtt, handler);
 
   // --- Wait for shutdown signal ---
-  handler.wait();
+  // handler.wait();
 
   // --- Shutdown ---
   mainLogger->info("Shutting down due to signal {} ({})", handler.signalName(),

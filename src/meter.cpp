@@ -1,9 +1,36 @@
 #include "meter.h"
 #include "config_yaml.h"
+#include "json_utils.h"
 #include "signal_handler.h"
+#include <chrono>
+#include <expected>
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include <regex>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
+using json = nlohmann::ordered_json;
 
 Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
     : cfg_(cfg), handler_(signalHandler) {
+
+  telegram_ = R"(/EBZ5DD3BZ06ETA_107
+
+1-0:0.0.0*255(1EBZ0100507409)
+1-0:96.1.0*255(1EBZ0100507409)
+1-0:1.8.0*255(000125.25688570*kWh)
+1-0:16.7.0*255(000259.20*W)
+1-0:36.7.0*255(000075.18*W)
+1-0:56.7.0*255(000092.34*W)
+1-0:76.7.0*255(000091.68*W)
+1-0:32.7.0*255(232.4*V)
+1-0:52.7.0*255(231.7*V)
+1-0:72.7.0*255(233.7*V)
+1-0:96.5.0*255(001C0104)
+0-0:96.8.0*255(00104443)
+!)";
 
   meterLogger_ = spdlog::get("meter");
   if (!meterLogger_)
@@ -11,3 +38,126 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
 }
 
 Meter::~Meter() {}
+
+std::expected<void, std::runtime_error> Meter::updateValuesAndJson() {
+
+  Values values{};
+
+  std::istringstream iss;
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    iss.str(telegram_);
+  }
+
+  std::regex lineRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
+  std::string line;
+
+  int lineNum = 0;
+  while (std::getline(iss, line)) {
+    ++lineNum;
+
+    if (line.empty() || (line.size() && (line[0] == '/' || line[0] == '!')))
+      continue;
+
+    try {
+      std::smatch match;
+      if (std::regex_search(line, match, lineRegex)) {
+        std::string obis = match[1];
+        std::string value_unit = match[2];
+
+        if (obis == "1-0:1.8.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in energy value");
+          values.energy = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:16.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in total power value");
+          values.power = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:36.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L1 phase power");
+          values.phase1.power = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:56.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L2 phase power");
+          values.phase2.power = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:76.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L3 phase power");
+          values.phase3.power = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:32.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L1 voltage");
+          values.phase1.voltage = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:52.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L2 voltage");
+          values.phase2.voltage = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "1-0:72.7.0*255") {
+          size_t pos = value_unit.find("*");
+          if (pos == std::string::npos)
+            throw std::runtime_error("Missing unit in L3 voltage");
+          values.phase3.voltage = std::stod(value_unit.substr(0, pos));
+        }
+      } else {
+        throw std::runtime_error(
+            "line is neither empty, a start marker ('/'), an end marker ('!'), "
+            "nor a recognized OBIS code: " +
+            line);
+      }
+
+    } catch (const std::exception &e) {
+      return std::unexpected(
+          std::runtime_error(std::string("Parsing failed at line ") +
+                             std::to_string(lineNum) + ": " + e.what()));
+    }
+  }
+
+  values.time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+
+  json newJson;
+  json phases = json::array();
+
+  phases.push_back({
+      {"id", 1},
+      {"power", JsonUtils::roundTo(values.phase1.power, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase1.voltage, 2)},
+  });
+
+  phases.push_back({
+      {"id", 2},
+      {"power", JsonUtils::roundTo(values.phase2.power, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase2.voltage, 2)},
+  });
+
+  phases.push_back({
+      {"id", 3},
+      {"power", JsonUtils::roundTo(values.phase3.power, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase3.voltage, 2)},
+  });
+
+  newJson["time"] = values.time;
+  newJson["energy"] = JsonUtils::roundTo(values.energy, 1);
+  newJson["power"] = JsonUtils::roundTo(values.power, 0);
+  newJson["phases"] = phases;
+
+  // Update shared values and JSON with lock
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    values_ = std::move(values);
+    json_ = std::move(newJson);
+  }
+
+  meterLogger_->debug("{}", json_.dump());
+
+  return {};
+}
