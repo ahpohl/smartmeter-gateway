@@ -2,13 +2,13 @@
 #include "config_yaml.h"
 #include "logger.h"
 // #include "modbus_slave.h"
+#include "meter.h"
 #include "mqtt_client.h"
 #include "signal_handler.h"
 #include <CLI/CLI.hpp>
 #include <cstdlib>
 #include <iostream>
 #include <nlohmann/json.hpp>
-#include "meter.h"
 
 using json = nlohmann::json;
 
@@ -53,8 +53,8 @@ int main(int argc, char *argv[]) {
   // --- Setup signals and shutdown
   SignalHandler handler;
 
-  // --- Start ModbusSlave
-  // ModbusSlave slave(cfg.modbus, handler);
+  // --- Start meter
+  Meter meter(cfg.meter, handler);
 
   // --- Start MQTT consumer ---
   MqttClient mqtt(cfg.mqtt, handler);

@@ -7,11 +7,7 @@
 #include <string>
 
 // --- Meter config ---
-enum class SerialParity {
-  None,
-  Even,
-  Odd
-};
+enum class SerialParity { None, Even, Odd };
 
 struct MeterConfig {
   std::string device;
@@ -85,6 +81,7 @@ struct Config {
   ModbusRootConfig modbus;
   MqttConfig mqtt;
   LoggerConfig logger;
+  MeterConfig meter;
 };
 
 // Forward declaration

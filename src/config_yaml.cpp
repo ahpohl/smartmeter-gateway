@@ -4,9 +4,12 @@
 #include <yaml-cpp/yaml.h>
 
 static SerialParity parseParity(const std::string &val) {
-  if (val == "none") return SerialParity::None;
-  if (val == "even") return SerialParity::Even;
-  if (val == "odd")  return SerialParity::Odd;
+  if (val == "none")
+    return SerialParity::None;
+  if (val == "even")
+    return SerialParity::Even;
+  if (val == "odd")
+    return SerialParity::Odd;
   throw std::invalid_argument("meter.parity must be one of: none, even, odd");
 }
 
@@ -15,17 +18,18 @@ static MeterConfig parseMeter(const YAML::Node &node) {
     throw std::runtime_error("Missing 'meter' section in config");
 
   MeterConfig cfg;
-  cfg.device   = node["device"].as<std::string>("/dev/ttyUSB0");
-  cfg.baud     = node["baud"].as<int>(9600);
+  cfg.device = node["device"].as<std::string>("/dev/ttyUSB0");
+  cfg.baud = node["baud"].as<int>(9600);
   cfg.dataBits = node["data_bits"].as<int>(7);
   cfg.stopBits = node["stop_bits"].as<int>(1);
-  cfg.parity   = parseParity(node["parity"].as<std::string>("even"));
+  cfg.parity = parseParity(node["parity"].as<std::string>("even"));
   cfg.updateInterval = node["update_interval"].as<int>(5);
 
   if (cfg.baud <= 0)
     throw std::invalid_argument("meter.baud must be positive");
 
-  if (!(cfg.dataBits == 5 || cfg.dataBits == 6 || cfg.dataBits == 7 || cfg.dataBits == 8))
+  if (!(cfg.dataBits == 5 || cfg.dataBits == 6 || cfg.dataBits == 7 ||
+        cfg.dataBits == 8))
     throw std::invalid_argument("meter.data_bits must be one of 5,6,7,8");
 
   if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
@@ -213,6 +217,7 @@ Config loadConfig(const std::string &path) {
   cfg.modbus = parseModbus(root["modbus"]);
   cfg.mqtt = parseMqtt(root["mqtt"]);
   cfg.logger = parseLogger(root["logger"]);
+  cfg.meter = parseMeter(root["meter"]);
 
   return cfg;
 }
