@@ -1,13 +1,13 @@
 #include "meter.h"
 #include "config_yaml.h"
 #include "json_utils.h"
+#include "meter_error.h"
 #include "signal_handler.h"
 #include <chrono>
 #include <expected>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 
 using json = nlohmann::ordered_json;
@@ -41,7 +41,7 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
 
 Meter::~Meter() {}
 
-std::expected<void, std::runtime_error> Meter::updateValuesAndJson() {
+std::expected<void, MeterError> Meter::updateValuesAndJson() {
 
   Values values{};
 
@@ -70,53 +70,54 @@ std::expected<void, std::runtime_error> Meter::updateValuesAndJson() {
         if (obis == "1-0:1.8.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in energy value");
+            throw MeterError::custom(EINVAL, "Missing unit in energy value");
           values.energy = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:16.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in total power value");
+            throw MeterError::custom(EINVAL,
+                                     "Missing unit in total power value");
           values.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:36.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L1 phase power");
+            throw MeterError::custom(EINVAL, "Missing unit in L1 phase power");
           values.phase1.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:56.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L2 phase power");
+            throw MeterError::custom(EINVAL, "Missing unit in L2 phase power");
           values.phase2.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:76.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L3 phase power");
+            throw MeterError::custom(EINVAL, "Missing unit in L3 phase power");
           values.phase3.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:32.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L1 voltage");
+            throw MeterError::custom(EINVAL, "Missing unit in L1 voltage");
           values.phase1.voltage = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:52.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L2 voltage");
+            throw MeterError::custom(EINVAL, "Missing unit in L2 voltage");
           values.phase2.voltage = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:72.7.0*255") {
           size_t pos = value_unit.find("*");
           if (pos == std::string::npos)
-            throw std::runtime_error("Missing unit in L3 voltage");
+            throw MeterError::custom(EINVAL, "Missing unit in L3 voltage");
           values.phase3.voltage = std::stod(value_unit.substr(0, pos));
         }
       } else {
-        throw std::runtime_error("Malformed OBEX expression: " + line);
+        throw MeterError::custom(EINVAL, "Malformed OBEX expression");
       }
 
-    } catch (const std::exception &e) {
-      return std::unexpected(std::runtime_error(
-          std::string(
-              "updateValuesAndJson(): Telegram parsing failed at line ") +
-          std::to_string(lineNum) + ": " + e.what()));
+    } catch (const MeterError &err) {
+      meterLogger_->error(
+          "updateValuesAndJson(): Telegram parsing failed at line {}: {}",
+          lineNum, err.message);
+      return std::unexpected(err);
     }
   }
 
@@ -167,7 +168,6 @@ void Meter::runLoop() {
 
     auto update = updateValuesAndJson();
     if (!update) {
-      meterLogger_->error("{}", update.error().what());
       handler_.shutdown();
     } else {
       std::lock_guard<std::mutex> lock(cbMutex_);

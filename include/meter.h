@@ -2,15 +2,14 @@
 #define METER_H_
 
 #include "config_yaml.h"
+#include "meter_error.h"
 #include "signal_handler.h"
-#include <atomic>
 #include <condition_variable>
 #include <expected>
 #include <functional>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <spdlog/logger.h>
-#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -35,7 +34,7 @@ public:
 
   std::string getJsonDump(void) const;
   Values getValues(void) const;
-  std::expected<void, std::runtime_error> updateValuesAndJson(void);
+  std::expected<void, MeterError> updateValuesAndJson(void);
 
   void setUpdateCallback(std::function<void(const std::string &)> cb);
 
