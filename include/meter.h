@@ -35,11 +35,14 @@ public:
   std::string getJsonDump(void) const;
   Values getValues(void) const;
   std::expected<void, MeterError> updateValuesAndJson(void);
+  std::expected<void, MeterError> readValuesFromDongle(void);
 
   void setUpdateCallback(std::function<void(const std::string &)> cb);
 
 private:
   void runLoop();
+  std::expected<void, MeterError> tryConnect(void);
+  void errorHandler(const MeterError &err);
 
   const MeterConfig &cfg_;
   Values values_;

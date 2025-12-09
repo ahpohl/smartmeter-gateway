@@ -69,55 +69,36 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
 
         if (obis == "1-0:1.8.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in energy value");
           values.energy = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:16.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL,
-                                     "Missing unit in total power value");
           values.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:36.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L1 phase power");
           values.phase1.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:56.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L2 phase power");
           values.phase2.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:76.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L3 phase power");
           values.phase3.power = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:32.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L1 voltage");
           values.phase1.voltage = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:52.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L2 voltage");
           values.phase2.voltage = std::stod(value_unit.substr(0, pos));
         } else if (obis == "1-0:72.7.0*255") {
           size_t pos = value_unit.find("*");
-          if (pos == std::string::npos)
-            throw MeterError::custom(EINVAL, "Missing unit in L3 voltage");
           values.phase3.voltage = std::stod(value_unit.substr(0, pos));
         }
       } else {
-        throw MeterError::custom(EINVAL, "Malformed OBEX expression");
+        throw std::invalid_argument("Malformed OBEX expression");
       }
-
-    } catch (const MeterError &err) {
-      meterLogger_->error(
-          "updateValuesAndJson(): Telegram parsing failed at line {}: {}",
-          lineNum, err.message);
-      return std::unexpected(err);
+    } catch (const std::exception &err) {
+      std::ostringstream oss;
+      oss << "[" << line << "]: " << err.what();
+      return std::unexpected(MeterError::custom(EINVAL, oss.str()));
     }
   }
 
@@ -168,7 +149,7 @@ void Meter::runLoop() {
 
     auto update = updateValuesAndJson();
     if (!update) {
-      handler_.shutdown();
+      errorHandler(update.error());
     } else {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (updateCallback_) {
@@ -193,4 +174,16 @@ void Meter::runLoop() {
 void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
+}
+
+void Meter::errorHandler(const MeterError &err) {
+  if (err.severity == MeterError::Severity::FATAL) {
+    meterLogger_->error("FATAL Meter error: {}", err.describe());
+
+    // FATAL error: terminate main loop
+    handler_.shutdown();
+
+  } else if (err.severity == MeterError::Severity::TRANSIENT) {
+    meterLogger_->debug("Transient Meter error: {}", err.describe());
+  }
 }
