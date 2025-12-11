@@ -35,7 +35,6 @@ public:
   std::string getJsonDump(void) const;
   Values getValues(void) const;
   std::expected<void, MeterError> updateValuesAndJson(void);
-  std::expected<void, MeterError> readValuesFromDongle(void);
 
   void setUpdateCallback(std::function<void(const std::string &)> cb);
 
@@ -43,19 +42,22 @@ private:
   void runLoop();
   std::expected<void, MeterError> tryConnect(void);
   void errorHandler(const MeterError &err);
+  void readTelegrams(void);
 
   const MeterConfig &cfg_;
   Values values_;
   std::string telegram_;
   nlohmann::ordered_json json_;
   std::shared_ptr<spdlog::logger> meterLogger_;
+  int serialPort_{-1};
 
   // --- threading / callbacks ---
   std::function<void(const nlohmann::ordered_json &)> updateCallback_;
   SignalHandler &handler_;
   mutable std::mutex cbMutex_;
-  std::thread worker_;
   std::condition_variable cv_;
+  std::thread worker_;
+  std::thread dongle_;
 };
 
 #endif /* METER_H_ */

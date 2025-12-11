@@ -50,9 +50,24 @@ public:
 private:
   static Severity deduceSeverity(int c) {
     switch (c) {
-    case EINVAL: // Invalid argument
-    case ENOMEM: // Out of memory
-    case ENOENT: // No such file or directory
+    case EINVAL:       // Invalid argument
+    case ENOMEM:       // Out of memory
+    case ENOENT:       // No such file or directory
+    case ENODEV:       // No such device
+    case ENXIO:        // No such device or address
+    case EACCES:       // Permission denied
+    case EPERM:        // Operation not permitted
+    case ENOTDIR:      // Not a directory
+    case EISDIR:       // Is a directory
+    case ENAMETOOLONG: // File name too long
+    case ELOOP:        // Too many symbolic links
+    case EMFILE:       // Process limit for file descriptors reached
+    case ENFILE:       // System-wide file descriptor table full
+    case ENOTTY:       // Not a terminal
+    case EBADF:        // Bad file descriptor
+    case EAGAIN:       // Resource temporarily unavailable
+    case EINTR:        // Call was interrupted by a signal
+    case EIO:          // Low-level I/O error
       return Severity::FATAL;
     default:
       return Severity::TRANSIENT;

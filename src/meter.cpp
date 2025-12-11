@@ -3,45 +3,50 @@
 #include "json_utils.h"
 #include "meter_error.h"
 #include "signal_handler.h"
+#include <asm-generic/ioctls.h>
 #include <chrono>
 #include <expected>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <sys/file.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 
 using json = nlohmann::ordered_json;
 
 Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
     : cfg_(cfg), handler_(signalHandler) {
 
-  telegram_ = R"(/EBZ5DD3BZ06ETA_107
-
-1-0:0.0.0*255(1EBZ0100507409)
-1-0:96.1.0*255(1EBZ0100507409)
-1-0:1.8.0*255(000125.25688570*kWh)
-1-0:16.7.0*255(000259.20*W)
-1-0:36.7.0*255(000075.18*W)
-1-0:56.7.0*255(000092.34*W)
-1-0:76.7.0*255(000091.68*W)
-1-0:32.7.0*255(232.4*V)
-1-0:52.7.0*255(231.7*V)
-1-0:72.7.0*255(233.7*V)
-1-0:96.5.0*255(001C0104)
-0-0:96.8.0*255(00104443)
-!)";
-
   meterLogger_ = spdlog::get("meter");
   if (!meterLogger_)
     meterLogger_ = spdlog::default_logger();
 
+  // start serial dongle loop thread
+  dongle_ = std::thread(&Meter::readTelegrams, this);
+
   // Start update loop thread
-  worker_ = std::thread(&Meter::runLoop, this);
+  // worker_ = std::thread(&Meter::runLoop, this);
 }
 
-Meter::~Meter() {}
+Meter::~Meter() {
+  if (serialPort_ != -1) {
+    close(serialPort_);
+  }
+  cv_.notify_all();
+  if (worker_.joinable())
+    worker_.join();
+  if (dongle_.joinable())
+    dongle_.join();
+}
 
 std::expected<void, MeterError> Meter::updateValuesAndJson() {
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    if (telegram_.empty())
+      return {};
+  }
 
   Values values{};
 
@@ -185,5 +190,165 @@ void Meter::errorHandler(const MeterError &err) {
 
   } else if (err.severity == MeterError::Severity::TRANSIENT) {
     meterLogger_->debug("Transient Meter error: {}", err.describe());
+  }
+}
+
+std::expected<void, MeterError> Meter::tryConnect(void) {
+  if (serialPort_ >= 0)
+    return {};
+
+  serialPort_ = open(cfg_.device.c_str(), O_RDONLY | O_NOCTTY);
+  if (serialPort_ == -1) {
+    return std::unexpected(
+        MeterError::fromErrno("Opening serial device failed"));
+  }
+
+  if (!isatty(serialPort_)) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(MeterError::fromErrno("Device is not a tty"));
+  }
+
+  if (flock(serialPort_, LOCK_EX | LOCK_NB) == -1) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(
+        MeterError::fromErrno("Failed to lock serial device"));
+  }
+
+  if (ioctl(serialPort_, TIOCEXCL) == -1) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(
+        MeterError::fromErrno("Failed to set exclusive lock"));
+  }
+
+  termios serialPortSettings;
+  if (tcgetattr(serialPort_, &serialPortSettings) == -1) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(
+        MeterError::fromErrno("Failed to get serial port attributes"));
+  }
+
+  cfmakeraw(&serialPortSettings);
+
+  // set baud (both directions)
+  if (cfsetispeed(&serialPortSettings, B9600) < 0 ||
+      cfsetospeed(&serialPortSettings, B9600) < 0) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(
+        MeterError::fromErrno("Failed to set serial port speed"));
+  }
+
+  // Base flags: enable receiver, ignore modem control lines
+  serialPortSettings.c_cflag |= (CLOCAL | CREAD);
+
+  // Clear size/parity/stop/flow flags first to avoid unexpected bits
+  serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
+
+  // 7 data bits
+  serialPortSettings.c_cflag |= CS7;
+
+  // Even parity: enable PARENB, ensure PARODD cleared
+  serialPortSettings.c_cflag |= PARENB;
+  serialPortSettings.c_cflag &= ~PARODD;
+
+  // await a full 64-byte block (VMIN=64) with 0.5s inter-byte timeout
+  serialPortSettings.c_cc[VMIN] = 64;
+  serialPortSettings.c_cc[VTIME] = 5;
+
+  if (tcsetattr(serialPort_, TCSANOW, &serialPortSettings)) {
+    int saved_errno = errno;
+    close(serialPort_);
+    errno = saved_errno;
+    return std::unexpected(
+        MeterError::fromErrno("Failed to set serial port attributes"));
+  }
+
+  // flush both directions if desired after applying settings
+  tcflush(serialPort_, TCIOFLUSH);
+
+  return {};
+}
+
+void Meter::readTelegrams(void) {
+
+  // until we can really read from the dongle
+  // Todo: remove
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    telegram_ = R"(/EBZ5DD3BZ06ETA_107
+
+1-0:0.0.0*255(1EBZ0100507409)
+1-0:96.1.0*255(1EBZ0100507409)
+1-0:1.8.0*255(000125.25688570*kWh)
+1-0:16.7.0*255(000259.20*W)
+1-0:36.7.0*255(000075.18*W)
+1-0:56.7.0*255(000092.34*W)
+1-0:76.7.0*255(000091.68*W)
+1-0:32.7.0*255(232.4*V)
+1-0:52.7.0*255(231.7*V)
+1-0:72.7.0*255(233.7*V)
+1-0:96.5.0*255(001C0104)
+0-0:96.8.0*255(00104443)
+!)";
+  }
+
+  while (handler_.isRunning()) {
+    auto conn = tryConnect();
+    if (!conn) {
+      errorHandler(conn.error());
+    }
+
+    char buffer[64] = {0};
+    char *b = buffer;
+    int bytesReceived = 0;
+
+    int bytesProcessed = 0;
+    const int packetLength = 368;
+    char packet[packetLength];
+    char *p = packet;
+    bool message_begin = false;
+
+    while (bytesProcessed < packetLength) {
+      if ((b - buffer) >= bytesReceived) {
+        memset(buffer, '\0', 64);
+        bytesReceived = read(serialPort_, buffer, 64);
+        if (bytesReceived == -1) {
+          errorHandler(MeterError::fromErrno("Failed to read serial device"));
+        } else {
+          b = buffer;
+          meterLogger_->debug("readTelegrams(): received {} bytes",
+                              bytesReceived);
+        }
+      }
+      memcpy(p, b, 1);
+      ++b;
+      if (*p == '/') {
+        message_begin = true;
+      }
+      if (message_begin) {
+        ++p;
+        ++bytesProcessed;
+      }
+    }
+    if (*(p - 3) != '!') {
+      errorHandler(MeterError::custom(
+          EPROTO, "readTelegrams(): packet stream not in sync"));
+    }
+    meterLogger_->trace(telegram_);
+
+    // Update shared telegram
+    {
+      std::lock_guard<std::mutex> lock(cbMutex_);
+      telegram_.assign(packet, packetLength);
+    }
   }
 }
