@@ -14,6 +14,24 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 
+/*
+telegram_ = R"(/EBZ5DD3BZ06ETA_107
+
+1-0:0.0.0*255(1EBZ0100507409)
+1-0:96.1.0*255(1EBZ0100507409)
+1-0:1.8.0*255(000125.25688570*kWh)
+1-0:16.7.0*255(000259.20*W)
+1-0:36.7.0*255(000075.18*W)
+1-0:56.7.0*255(000092.34*W)
+1-0:76.7.0*255(000091.68*W)
+1-0:32.7.0*255(232.4*V)
+1-0:52.7.0*255(231.7*V)
+1-0:72.7.0*255(233.7*V)
+1-0:96.5.0*255(001C0104)
+0-0:96.8.0*255(00104443)
+!)";
+*/
+
 using json = nlohmann::ordered_json;
 
 Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
@@ -27,7 +45,7 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
   dongle_ = std::thread(&Meter::readTelegrams, this);
 
   // Start update loop thread
-  // worker_ = std::thread(&Meter::runLoop, this);
+  worker_ = std::thread(&Meter::runLoop, this);
 }
 
 Meter::~Meter() {
@@ -275,36 +293,21 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   // flush both directions if desired after applying settings
   tcflush(serialPort_, TCIOFLUSH);
 
+  meterLogger_->info("Meter connected");
+
   return {};
 }
 
 void Meter::readTelegrams(void) {
 
-  // until we can really read from the dongle
-  // Todo: remove
-  {
-    std::lock_guard<std::mutex> lock(cbMutex_);
-    telegram_ = R"(/EBZ5DD3BZ06ETA_107
-
-1-0:0.0.0*255(1EBZ0100507409)
-1-0:96.1.0*255(1EBZ0100507409)
-1-0:1.8.0*255(000125.25688570*kWh)
-1-0:16.7.0*255(000259.20*W)
-1-0:36.7.0*255(000075.18*W)
-1-0:56.7.0*255(000092.34*W)
-1-0:76.7.0*255(000091.68*W)
-1-0:32.7.0*255(232.4*V)
-1-0:52.7.0*255(231.7*V)
-1-0:72.7.0*255(233.7*V)
-1-0:96.5.0*255(001C0104)
-0-0:96.8.0*255(00104443)
-!)";
-  }
-
   while (handler_.isRunning()) {
     auto conn = tryConnect();
     if (!conn) {
       errorHandler(conn.error());
+      if (!handler_.isRunning())
+        break;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      continue;
     }
 
     char buffer[64] = {0};
@@ -339,9 +342,23 @@ void Meter::readTelegrams(void) {
         ++bytesProcessed;
       }
     }
-    if (*(p - 3) != '!') {
+    if ((p - packet) < 3 || *(p - 3) != '!') {
       errorHandler(MeterError::custom(
           EPROTO, "readTelegrams(): packet stream not in sync"));
+
+      // Force reconnect/resync by closing the serial port and clearing the fd.
+      if (serialPort_ >= 0) {
+        close(serialPort_);
+        serialPort_ = -1;
+      }
+
+      // If errorHandler triggered shutdown, break out immediately.
+      if (!handler_.isRunning())
+        break;
+
+      // Back off briefly to avoid tight retry loops.
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      continue;
     }
     meterLogger_->trace(telegram_);
 
@@ -351,4 +368,6 @@ void Meter::readTelegrams(void) {
       telegram_.assign(packet, packetLength);
     }
   }
+
+  meterLogger_->debug("Dongle run loop stopped.");
 }
