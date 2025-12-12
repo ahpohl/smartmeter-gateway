@@ -4,7 +4,10 @@ meter:
   data_bits: 7
   stop_bits: 1
   parity: even   # none | even | odd
-  update_interval: 5
+  reconnect_delay:
+    min: 5
+    max: 320
+    exponential: true
 
 modbus:
   tcp:

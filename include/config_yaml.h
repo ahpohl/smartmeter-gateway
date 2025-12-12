@@ -9,15 +9,6 @@
 // --- Meter config ---
 enum class SerialParity { None, Even, Odd };
 
-struct MeterConfig {
-  std::string device;
-  int baud;
-  int dataBits;
-  int stopBits;
-  SerialParity parity;
-  int updateInterval;
-};
-
 // --- Modbus TCP config ---
 struct ModbusTcpConfig {
   std::string host;
@@ -30,6 +21,12 @@ struct ModbusRtuConfig {
   int baud;
 };
 
+// --- Response timeout config ---
+struct ResponseTimeoutConfig {
+  int sec{0};
+  int usec{200000};
+};
+
 // --- Reconnect delay config ---
 struct ReconnectDelayConfig {
   int min{5};
@@ -37,10 +34,16 @@ struct ReconnectDelayConfig {
   bool exponential{true};
 };
 
-// --- Response timeout config ---
-struct ResponseTimeoutConfig {
-  int sec{0};
-  int usec{200000};
+// Meter config
+struct MeterConfig {
+  std::string device;
+  int baud;
+  int dataBits;
+  int stopBits;
+  SerialParity parity;
+
+  // Optional retry parameters
+  std::optional<ReconnectDelayConfig> reconnectDelay;
 };
 
 // --- Root Modbus config ---
@@ -48,12 +51,10 @@ struct ModbusRootConfig {
   std::optional<ModbusTcpConfig> tcp;
   std::optional<ModbusRtuConfig> rtu;
 
-  int updateInterval{5};
   int slaveId{1};
   int timeout{1};
 
   // Optional parameters
-  std::optional<ReconnectDelayConfig> reconnectDelay;
   std::optional<ResponseTimeoutConfig> responseTimeout;
 };
 

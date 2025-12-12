@@ -323,6 +323,8 @@ std::expected<void, MeterError> Meter::readTelegram() {
 }
 
 void Meter::runLoop() {
+  int reconnectDelay = cfg_.reconnectDelay->min;
+
   while (handler_.isRunning()) {
 
     auto conn = tryConnect();
@@ -330,31 +332,40 @@ void Meter::runLoop() {
       errorHandler(conn.error());
       if (!handler_.isRunning())
         break;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      {
+        std::unique_lock<std::mutex> lock(cbMutex_);
+        cv_.wait_for(lock, std::chrono::seconds(reconnectDelay),
+                     [this] { return !handler_.isRunning(); });
+      }
+      if (cfg_.reconnectDelay->exponential && handler_.isRunning())
+        reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
+    } else {
+      if (cfg_.reconnectDelay->exponential)
+        reconnectDelay = cfg_.reconnectDelay->min;
     }
 
     auto telegram = readTelegram();
     if (!telegram) {
       errorHandler(telegram.error());
+      if (!handler_.isRunning())
+        break;
       if (serialPort_ >= 0) {
         close(serialPort_);
         serialPort_ = -1;
       }
-      if (!handler_.isRunning())
-        break;
       continue;
     }
 
     auto update = updateValuesAndJson();
     if (!update) {
       errorHandler(update.error());
+      if (!handler_.isRunning())
+        break;
       if (serialPort_ >= 0) {
         close(serialPort_);
         serialPort_ = -1;
       }
-      if (!handler_.isRunning())
-        break;
     } else {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (updateCallback_) {
@@ -368,10 +379,6 @@ void Meter::runLoop() {
         }
       }
     }
-
-    //    std::unique_lock<std::mutex> lock(cbMutex_);
-    //    cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
-    //                 [this] { return !handler_.isRunning(); });
   }
 
   meterLogger_->debug("Meter run loop stopped.");

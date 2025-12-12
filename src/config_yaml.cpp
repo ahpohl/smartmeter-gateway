@@ -13,31 +13,6 @@ static SerialParity parseParity(const std::string &val) {
   throw std::invalid_argument("meter.parity must be one of: none, even, odd");
 }
 
-static MeterConfig parseMeter(const YAML::Node &node) {
-  if (!node)
-    throw std::runtime_error("Missing 'meter' section in config");
-
-  MeterConfig cfg;
-  cfg.device = node["device"].as<std::string>("/dev/ttyUSB0");
-  cfg.baud = node["baud"].as<int>(9600);
-  cfg.dataBits = node["data_bits"].as<int>(7);
-  cfg.stopBits = node["stop_bits"].as<int>(1);
-  cfg.parity = parseParity(node["parity"].as<std::string>("even"));
-  cfg.updateInterval = node["update_interval"].as<int>(5);
-
-  if (cfg.baud <= 0)
-    throw std::invalid_argument("meter.baud must be positive");
-
-  if (!(cfg.dataBits == 5 || cfg.dataBits == 6 || cfg.dataBits == 7 ||
-        cfg.dataBits == 8))
-    throw std::invalid_argument("meter.data_bits must be one of 5,6,7,8");
-
-  if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
-    throw std::invalid_argument("meter.stop_bits must be 1 or 2");
-
-  return cfg;
-}
-
 static std::optional<ModbusTcpConfig> parseModbusTcp(const YAML::Node &node) {
   if (!node)
     return std::nullopt;
@@ -105,6 +80,34 @@ parseResponseTimeout(const YAML::Node &node) {
   return cfg;
 }
 
+static MeterConfig parseMeter(const YAML::Node &node) {
+  if (!node)
+    throw std::runtime_error("Missing 'meter' section in config");
+
+  MeterConfig cfg;
+  cfg.device = node["device"].as<std::string>("/dev/ttyUSB0");
+  cfg.baud = node["baud"].as<int>(9600);
+  cfg.dataBits = node["data_bits"].as<int>(7);
+  cfg.stopBits = node["stop_bits"].as<int>(1);
+  cfg.parity = parseParity(node["parity"].as<std::string>("even"));
+
+  // --- Optional reconnect delay ---
+  if (node["reconnect_delay"])
+    cfg.reconnectDelay = parseReconnectDelay(node["reconnect_delay"]);
+
+  if (cfg.baud <= 0)
+    throw std::invalid_argument("meter.baud must be positive");
+
+  if (!(cfg.dataBits == 5 || cfg.dataBits == 6 || cfg.dataBits == 7 ||
+        cfg.dataBits == 8))
+    throw std::invalid_argument("meter.data_bits must be one of 5,6,7,8");
+
+  if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
+    throw std::invalid_argument("meter.stop_bits must be 1 or 2");
+
+  return cfg;
+}
+
 static ModbusRootConfig parseModbus(const YAML::Node &node) {
   if (!node)
     throw std::runtime_error("Missing 'modbus' section in config");
@@ -123,21 +126,15 @@ static ModbusRootConfig parseModbus(const YAML::Node &node) {
 
   // --- Basic parameters ---
   cfg.slaveId = node["slave_id"].as<int>(1);
-  cfg.updateInterval = node["update_interval"].as<int>(5);
   cfg.timeout = node["response_timeout"].as<int>(1);
 
   // --- Optional ---
-  if (node["reconnect_delay"])
-    cfg.reconnectDelay = parseReconnectDelay(node["reconnect_delay"]);
   if (node["response_timeout"])
     cfg.responseTimeout = parseResponseTimeout(node["response_timeout"]);
 
   // --- Validation ---
   if (cfg.slaveId < 1 || cfg.slaveId > 247)
     throw std::invalid_argument("Modbus slave_id must be in range 1–247");
-
-  if (cfg.updateInterval <= 0)
-    throw std::invalid_argument("modbus.update_interval must be positive");
 
   return cfg;
 }
