@@ -34,15 +34,17 @@ public:
 
   std::string getJsonDump(void) const;
   Values getValues(void) const;
-  std::expected<void, MeterError> updateValuesAndJson(void);
-
   void setUpdateCallback(std::function<void(const std::string &)> cb);
+
+  static constexpr size_t BUFFER_SIZE = 64;
+  static constexpr size_t TELEGRAM_SIZE = 368;
 
 private:
   void runLoop();
-  std::expected<void, MeterError> tryConnect(void);
   void errorHandler(const MeterError &err);
-  void readTelegrams(void);
+  std::expected<void, MeterError> updateValuesAndJson(void);
+  std::expected<void, MeterError> tryConnect(void);
+  std::expected<void, MeterError> readTelegram(void);
 
   const MeterConfig &cfg_;
   Values values_;

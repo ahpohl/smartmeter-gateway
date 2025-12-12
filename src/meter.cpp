@@ -41,9 +41,6 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
   if (!meterLogger_)
     meterLogger_ = spdlog::default_logger();
 
-  // start serial dongle loop thread
-  dongle_ = std::thread(&Meter::readTelegrams, this);
-
   // Start update loop thread
   worker_ = std::thread(&Meter::runLoop, this);
 }
@@ -55,8 +52,6 @@ Meter::~Meter() {
   cv_.notify_all();
   if (worker_.joinable())
     worker_.join();
-  if (dongle_.joinable())
-    dongle_.join();
 }
 
 std::expected<void, MeterError> Meter::updateValuesAndJson() {
@@ -167,33 +162,6 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
   return {};
 }
 
-void Meter::runLoop() {
-  while (handler_.isRunning()) {
-
-    auto update = updateValuesAndJson();
-    if (!update) {
-      errorHandler(update.error());
-    } else {
-      std::lock_guard<std::mutex> lock(cbMutex_);
-      if (updateCallback_) {
-        try {
-          updateCallback_(json_.dump());
-        } catch (const std::exception &ex) {
-          meterLogger_->error("FATAL error in Meter update callback: {}",
-                              ex.what());
-          handler_.shutdown();
-        }
-      }
-    }
-
-    std::unique_lock<std::mutex> lock(cbMutex_);
-    cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
-                 [this] { return !handler_.isRunning(); });
-  }
-
-  meterLogger_->debug("Meter run loop stopped.");
-}
-
 void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
@@ -279,7 +247,7 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   serialPortSettings.c_cflag &= ~PARODD;
 
   // await a full 64-byte block (VMIN=64) with 0.5s inter-byte timeout
-  serialPortSettings.c_cc[VMIN] = 64;
+  serialPortSettings.c_cc[VMIN] = BUFFER_SIZE;
   serialPortSettings.c_cc[VTIME] = 5;
 
   if (tcsetattr(serialPort_, TCSANOW, &serialPortSettings)) {
@@ -298,9 +266,65 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   return {};
 }
 
-void Meter::readTelegrams(void) {
+std::expected<void, MeterError> Meter::readTelegram() {
+  if (serialPort_ == -1)
+    return std::unexpected(
+        MeterError::fromErrno("readTelegram(): Meter not connected"));
 
+  std::vector<char> buffer(BUFFER_SIZE);
+  std::size_t bufPos = 0;
+  ssize_t bytesReceived = 0;
+
+  std::vector<char> packet(TELEGRAM_SIZE);
+  std::size_t packetPos = 0;
+  bool messageBegin = false;
+
+  while (packetPos < static_cast<std::size_t>(TELEGRAM_SIZE)) {
+    if (bufPos >= static_cast<std::size_t>(bytesReceived)) {
+      std::fill(buffer.begin(), buffer.end(), '\0');
+
+      bytesReceived = ::read(serialPort_, buffer.data(), BUFFER_SIZE);
+      if (bytesReceived == -1) {
+        return std::unexpected(
+            MeterError::fromErrno("Failed to read serial device"));
+      }
+      if (bytesReceived == 0) {
+        return std::unexpected(
+            MeterError::custom(EOF, "readTelegram(): serial device closed"));
+      }
+      bufPos = 0;
+    }
+
+    // consume one char from the buffer
+    char c = buffer[bufPos++];
+    if (c == '/')
+      messageBegin = true;
+
+    if (messageBegin) {
+      packet[packetPos++] = c;
+    }
+  }
+
+  // Ensure we have at least 3 bytes and the third-from-last is '!'
+  if (packetPos < 3 || packet[packetPos - 3] != '!') {
+    return std::unexpected(MeterError::custom(
+        EPROTO, "readTelegram(): telegram stream not in sync"));
+  }
+
+  meterLogger_->trace("Received telegram (len {}):\n{}", packetPos,
+                      std::string(packet.begin(), packet.end()));
+
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    telegram_.assign(packet.begin(), packet.end());
+  }
+
+  return {};
+}
+
+void Meter::runLoop() {
   while (handler_.isRunning()) {
+
     auto conn = tryConnect();
     if (!conn) {
       errorHandler(conn.error());
@@ -310,64 +334,45 @@ void Meter::readTelegrams(void) {
       continue;
     }
 
-    char buffer[64] = {0};
-    char *b = buffer;
-    int bytesReceived = 0;
-
-    int bytesProcessed = 0;
-    const int packetLength = 368;
-    char packet[packetLength];
-    char *p = packet;
-    bool message_begin = false;
-
-    while (bytesProcessed < packetLength) {
-      if ((b - buffer) >= bytesReceived) {
-        memset(buffer, '\0', 64);
-        bytesReceived = read(serialPort_, buffer, 64);
-        if (bytesReceived == -1) {
-          errorHandler(MeterError::fromErrno("Failed to read serial device"));
-        } else {
-          b = buffer;
-          meterLogger_->debug("readTelegrams(): received {} bytes",
-                              bytesReceived);
-        }
-      }
-      memcpy(p, b, 1);
-      ++b;
-      if (*p == '/') {
-        message_begin = true;
-      }
-      if (message_begin) {
-        ++p;
-        ++bytesProcessed;
-      }
-    }
-    if ((p - packet) < 3 || *(p - 3) != '!') {
-      errorHandler(MeterError::custom(
-          EPROTO, "readTelegrams(): packet stream not in sync"));
-
-      // Force reconnect/resync by closing the serial port and clearing the fd.
+    auto telegram = readTelegram();
+    if (!telegram) {
+      errorHandler(telegram.error());
       if (serialPort_ >= 0) {
         close(serialPort_);
         serialPort_ = -1;
       }
-
-      // If errorHandler triggered shutdown, break out immediately.
       if (!handler_.isRunning())
         break;
-
-      // Back off briefly to avoid tight retry loops.
-      std::this_thread::sleep_for(std::chrono::seconds(1));
       continue;
     }
-    meterLogger_->trace(telegram_);
 
-    // Update shared telegram
-    {
+    auto update = updateValuesAndJson();
+    if (!update) {
+      errorHandler(update.error());
+      if (serialPort_ >= 0) {
+        close(serialPort_);
+        serialPort_ = -1;
+      }
+      if (!handler_.isRunning())
+        break;
+    } else {
       std::lock_guard<std::mutex> lock(cbMutex_);
-      telegram_.assign(packet, packetLength);
+      if (updateCallback_) {
+        try {
+          updateCallback_(json_.dump());
+        } catch (const std::exception &ex) {
+          errorHandler(MeterError::custom(
+              EINVAL, "FATAL error in Meter update callback: {}", ex.what()));
+          if (!handler_.isRunning())
+            break;
+        }
+      }
     }
+
+    //    std::unique_lock<std::mutex> lock(cbMutex_);
+    //    cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
+    //                 [this] { return !handler_.isRunning(); });
   }
 
-  meterLogger_->debug("Dongle run loop stopped.");
+  meterLogger_->debug("Meter run loop stopped.");
 }
