@@ -15,8 +15,12 @@ set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
 set(CMAKE_ASM_COMPILER aarch64-linux-gnu-gcc)
 
 # ---- Standard GCC sysroot support ----
-set(CMAKE_C_FLAGS   "--sysroot=${CMAKE_SYSROOT}" CACHE STRING "" FORCE)
-set(CMAKE_CXX_FLAGS "--sysroot=${CMAKE_SYSROOT}" CACHE STRING "" FORCE)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --sysroot=${CMAKE_SYSROOT}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --sysroot=${CMAKE_SYSROOT}")
+
+# ---- Ensure linker gets sysroot
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--sysroot=${CMAKE_SYSROOT} -L${CMAKE_SYSROOT}/usr/lib")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--sysroot=${CMAKE_SYSROOT} -L${CMAKE_SYSROOT}/usr/lib")
 
 # ---- pkg-config support inside sysroot ----
 set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/usr/lib/pkgconfig:${CMAKE_SYSROOT}/usr/share/pkgconfig")
