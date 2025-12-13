@@ -116,7 +116,7 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
     } catch (const std::exception &err) {
       std::ostringstream oss;
       oss << "[" << line << "]: " << err.what();
-      return std::unexpected(MeterError::custom(EINVAL, oss.str()));
+      return std::unexpected(MeterError::custom(EPROTO, oss.str()));
     }
   }
 
@@ -261,8 +261,6 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   // flush both directions if desired after applying settings
   tcflush(serialPort_, TCIOFLUSH);
 
-  meterLogger_->info("Meter connected");
-
   return {};
 }
 
@@ -272,14 +270,14 @@ std::expected<void, MeterError> Meter::readTelegram() {
         MeterError::fromErrno("readTelegram(): Meter not connected"));
 
   std::vector<char> buffer(BUFFER_SIZE);
-  std::size_t bufPos = 0;
+  size_t bufPos = 0;
   ssize_t bytesReceived = 0;
 
   std::vector<char> packet(TELEGRAM_SIZE);
-  std::size_t packetPos = 0;
+  size_t packetPos = 0;
   bool messageBegin = false;
 
-  while (packetPos < static_cast<std::size_t>(TELEGRAM_SIZE)) {
+  while (packetPos < TELEGRAM_SIZE) {
     if (bufPos >= static_cast<std::size_t>(bytesReceived)) {
       std::fill(buffer.begin(), buffer.end(), '\0');
 
@@ -332,6 +330,9 @@ void Meter::runLoop() {
       errorHandler(conn.error());
       if (!handler_.isRunning())
         break;
+      meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
+                         reconnectDelay,
+                         reconnectDelay == 1 ? "second" : "seconds");
       {
         std::unique_lock<std::mutex> lock(cbMutex_);
         cv_.wait_for(lock, std::chrono::seconds(reconnectDelay),
@@ -341,6 +342,7 @@ void Meter::runLoop() {
         reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
     } else {
+      meterLogger_->info("Meter connected");
       if (cfg_.reconnectDelay->exponential)
         reconnectDelay = cfg_.reconnectDelay->min;
     }

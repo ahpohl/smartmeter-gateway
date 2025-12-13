@@ -6,7 +6,7 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 # ---- SYSROOT ----
 # Allow override via -DCMAKE_SYSROOT=...
 if(NOT CMAKE_SYSROOT)
-    set(CMAKE_SYSROOT "/home/alex/aarch64/root")
+    set(CMAKE_SYSROOT "/home/alex/aarch64/root/")
 endif()
 
 # ---- COMPILERS ----
