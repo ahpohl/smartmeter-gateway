@@ -3,6 +3,7 @@
 #include "json_utils.h"
 #include "meter_error.h"
 #include "signal_handler.h"
+#include <algorithm>
 #include <asm-generic/ioctls.h>
 #include <chrono>
 #include <expected>
@@ -46,10 +47,10 @@ Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
 }
 
 Meter::~Meter() {
-  disconnect();
   cv_.notify_all();
   if (worker_.joinable())
     worker_.join();
+  disconnect();
 }
 
 void Meter::disconnect(void) {
@@ -239,6 +240,7 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
   int lineNum = 0;
   while (std::getline(iss, line)) {
     ++lineNum;
+    line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
 
     if (line.empty() || (line.size() && (line[0] == '/' || line[0] == '!')))
       continue;
