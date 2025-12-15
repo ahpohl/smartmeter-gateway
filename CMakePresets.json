@@ -8,7 +8,7 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/arm64-Debug",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-archlinux.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-toolchain.cmake",
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
@@ -19,7 +19,7 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/arm64-Release",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-archlinux.cmake",
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-toolchain.cmake",
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
