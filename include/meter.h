@@ -42,6 +42,7 @@ public:
 private:
   void runLoop();
   void errorHandler(const MeterError &err);
+  void disconnect(void);
   std::expected<void, MeterError> updateValuesAndJson(void);
   std::expected<void, MeterError> tryConnect(void);
   std::expected<void, MeterError> readTelegram(void);

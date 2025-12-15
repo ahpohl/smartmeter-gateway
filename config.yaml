@@ -23,11 +23,11 @@ modbus:
   use_float_model: false
       
 mqtt:
-  broker: geapoh.home.arpa
+  broker: localhost
   port: 1883
   topic: smartmeter-gateway
-  #user: mqtt
-  #password: "your-secret-password"
+  user: mqtt
+  password: M{jMl{C/4y^6kQJlX+87
   queue_size: 100
   reconnect_delay:
     min: 2
@@ -38,6 +38,6 @@ logger:
   level: info     # global default: off | error | warn | info | debug | trace
   modules:
     main: info
-    meter: trace
+    meter: debug
     modbus: info
     mqtt: info

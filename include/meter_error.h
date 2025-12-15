@@ -68,6 +68,7 @@ private:
     case EAGAIN:       // Resource temporarily unavailable
     case EINTR:        // Call was interrupted by a signal
     case EIO:          // Low-level I/O error
+    case EBUSY:        // Device or resource busy
       return Severity::FATAL;
     default:
       return Severity::TRANSIENT;
