@@ -54,9 +54,12 @@ Meter::~Meter() {
 }
 
 void Meter::disconnect(void) {
-  if (serialPort_ != -1) {
-    close(serialPort_);
-    serialPort_ = -1;
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    if (serialPort_ != -1) {
+      close(serialPort_);
+      serialPort_ = -1;
+    }
   }
   meterLogger_->info("Meter disconnected");
 }
@@ -79,86 +82,97 @@ void Meter::errorHandler(const MeterError &err) {
 }
 
 std::expected<void, MeterError> Meter::tryConnect(void) {
+  if (!handler_.isRunning()) {
+    return std::unexpected(MeterError::custom(
+        EINTR, "Shutdown in progress, aborting tryConnect()"));
+  }
+
   if (serialPort_ >= 0)
     return {};
 
-  serialPort_ = open(cfg_.device.c_str(), O_RDONLY | O_NOCTTY);
-  if (serialPort_ == -1) {
-    return std::unexpected(
-        MeterError::fromErrno("Opening serial device failed"));
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+
+    serialPort_ = open(cfg_.device.c_str(), O_RDONLY | O_NOCTTY);
+    if (serialPort_ == -1) {
+      return std::unexpected(
+          MeterError::fromErrno("Opening serial device failed"));
+    }
+
+    if (!isatty(serialPort_)) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(MeterError::fromErrno("Device is not a tty"));
+    }
+
+    if (flock(serialPort_, LOCK_EX | LOCK_NB) == -1) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(
+          MeterError::fromErrno("Failed to lock serial device"));
+    }
+
+    if (ioctl(serialPort_, TIOCEXCL) == -1) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(
+          MeterError::fromErrno("Failed to set exclusive lock"));
+    }
+
+    termios serialPortSettings;
+    if (tcgetattr(serialPort_, &serialPortSettings) == -1) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(
+          MeterError::fromErrno("Failed to get serial port attributes"));
+    }
+
+    cfmakeraw(&serialPortSettings);
+
+    // set baud (both directions)
+    if (cfsetispeed(&serialPortSettings, B9600) < 0 ||
+        cfsetospeed(&serialPortSettings, B9600) < 0) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(
+          MeterError::fromErrno("Failed to set serial port speed"));
+    }
+
+    // Base flags: enable receiver, ignore modem control lines
+    serialPortSettings.c_cflag |= (CLOCAL | CREAD);
+
+    // Clear size/parity/stop/flow flags first to avoid unexpected bits
+    serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
+
+    // 7 data bits
+    serialPortSettings.c_cflag |= CS7;
+
+    // Even parity: enable PARENB, ensure PARODD cleared
+    serialPortSettings.c_cflag |= PARENB;
+    serialPortSettings.c_cflag &= ~PARODD;
+
+    // await a full 64-byte block (VMIN=64) with 0.5s inter-byte timeout
+    serialPortSettings.c_cc[VMIN] = BUFFER_SIZE;
+    serialPortSettings.c_cc[VTIME] = 5;
+
+    if (tcsetattr(serialPort_, TCSANOW, &serialPortSettings)) {
+      int saved_errno = errno;
+      close(serialPort_);
+      errno = saved_errno;
+      return std::unexpected(
+          MeterError::fromErrno("Failed to set serial port attributes"));
+    }
+
+    // flush both directions if desired after applying settings
+    tcflush(serialPort_, TCIOFLUSH);
   }
 
-  if (!isatty(serialPort_)) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(MeterError::fromErrno("Device is not a tty"));
-  }
-
-  if (flock(serialPort_, LOCK_EX | LOCK_NB) == -1) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(
-        MeterError::fromErrno("Failed to lock serial device"));
-  }
-
-  if (ioctl(serialPort_, TIOCEXCL) == -1) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(
-        MeterError::fromErrno("Failed to set exclusive lock"));
-  }
-
-  termios serialPortSettings;
-  if (tcgetattr(serialPort_, &serialPortSettings) == -1) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(
-        MeterError::fromErrno("Failed to get serial port attributes"));
-  }
-
-  cfmakeraw(&serialPortSettings);
-
-  // set baud (both directions)
-  if (cfsetispeed(&serialPortSettings, B9600) < 0 ||
-      cfsetospeed(&serialPortSettings, B9600) < 0) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(
-        MeterError::fromErrno("Failed to set serial port speed"));
-  }
-
-  // Base flags: enable receiver, ignore modem control lines
-  serialPortSettings.c_cflag |= (CLOCAL | CREAD);
-
-  // Clear size/parity/stop/flow flags first to avoid unexpected bits
-  serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
-
-  // 7 data bits
-  serialPortSettings.c_cflag |= CS7;
-
-  // Even parity: enable PARENB, ensure PARODD cleared
-  serialPortSettings.c_cflag |= PARENB;
-  serialPortSettings.c_cflag &= ~PARODD;
-
-  // await a full 64-byte block (VMIN=64) with 0.5s inter-byte timeout
-  serialPortSettings.c_cc[VMIN] = BUFFER_SIZE;
-  serialPortSettings.c_cc[VTIME] = 5;
-
-  if (tcsetattr(serialPort_, TCSANOW, &serialPortSettings)) {
-    int saved_errno = errno;
-    close(serialPort_);
-    errno = saved_errno;
-    return std::unexpected(
-        MeterError::fromErrno("Failed to set serial port attributes"));
-  }
-
-  // flush both directions if desired after applying settings
-  tcflush(serialPort_, TCIOFLUSH);
+  meterLogger_->info("Meter connected");
 
   return {};
 }
@@ -350,7 +364,6 @@ void Meter::runLoop() {
         reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
     } else {
-      meterLogger_->info("Meter connected");
       if (cfg_.reconnectDelay->exponential)
         reconnectDelay = cfg_.reconnectDelay->min;
     }
@@ -384,6 +397,12 @@ void Meter::runLoop() {
         }
       }
     }
+    /*
+        // --- Wait for next update interval ---
+        std::unique_lock<std::mutex> lock(cbMutex_);
+        cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
+                     [this] { return !handler_.isRunning(); });
+    */
   }
 
   meterLogger_->debug("Meter run loop stopped.");

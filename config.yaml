@@ -4,6 +4,7 @@ meter:
   data_bits: 7
   stop_bits: 1
   parity: even   # none | even | odd
+  update_interval: 5
   reconnect_delay:
     min: 5
     max: 320
@@ -23,11 +24,11 @@ modbus:
   use_float_model: false
       
 mqtt:
-  broker: localhost
+  broker: 192.168.6.80
   port: 1883
   topic: smartmeter-gateway
-  user: mqtt
-  password: M{jMl{C/4y^6kQJlX+87
+  #user: mqtt
+  #password: "your secret password"
   queue_size: 100
   reconnect_delay:
     min: 2
