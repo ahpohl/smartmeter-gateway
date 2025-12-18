@@ -179,7 +179,7 @@ std::expected<void, MeterError> Meter::readTelegram() {
 
   if (serialPort_ == -1)
     return std::unexpected(
-        MeterError::fromErrno("readTelegram(): Meter not connected"));
+        MeterError::custom(ENOTCONN, "readTelegram(): Meter not connected"));
 
   std::vector<char> buffer(BUFFER_SIZE);
   std::vector<char> packet(TELEGRAM_SIZE);
