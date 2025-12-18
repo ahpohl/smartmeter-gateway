@@ -9,7 +9,7 @@
 
 struct MeterError {
 public:
-  enum class Severity { TRANSIENT, FATAL };
+  enum class Severity { TRANSIENT, FATAL, SHUTDOWN };
 
   int code;
   std::string message;
@@ -66,10 +66,11 @@ private:
     case ENOTTY:       // Not a terminal
     case EBADF:        // Bad file descriptor
     case EAGAIN:       // Resource temporarily unavailable
-    case EINTR:        // Call was interrupted by a signal
     case EIO:          // Low-level I/O error
     case EBUSY:        // Device or resource busy
       return Severity::FATAL;
+    case EINTR: // Call was interrupted by a signal
+      return Severity::SHUTDOWN;
     default:
       return Severity::TRANSIENT;
     }

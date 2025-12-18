@@ -58,12 +58,18 @@ Meter::handleResult(std::expected<void, MeterError> &&result) {
 
   const MeterError &err = result.error();
 
-  if (err.severity == MeterError::Severity::FATAL) {
+  if (err.severity == MeterError::Severity::SHUTDOWN) {
+    // Shutdown already in progress - just exit cleanly
+    return Meter::ErrorAction::SHUTDOWN;
+
+  } else if (err.severity == MeterError::Severity::FATAL) {
+    // Fatal error occurred - initiate shutdown sequence
     meterLogger_->error("FATAL Meter error: {}", err.describe());
     handler_.shutdown();
     return Meter::ErrorAction::SHUTDOWN;
 
   } else if (err.severity == MeterError::Severity::TRANSIENT) {
+    // Temporary error - disconnect and reconnect
     meterLogger_->debug("Transient Meter error: {}", err.describe());
     disconnect();
     return Meter::ErrorAction::RECONNECT;
