@@ -15,24 +15,6 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 
-/*
-telegram_ = R"(/EBZ5DD3BZ06ETA_107
-
-1-0:0.0.0*255(1EBZ0100507409)
-1-0:96.1.0*255(1EBZ0100507409)
-1-0:1.8.0*255(000125.25688570*kWh)
-1-0:16.7.0*255(000259.20*W)
-1-0:36.7.0*255(000075.18*W)
-1-0:56.7.0*255(000092.34*W)
-1-0:76.7.0*255(000091.68*W)
-1-0:32.7.0*255(232.4*V)
-1-0:52.7.0*255(231.7*V)
-1-0:72.7.0*255(233.7*V)
-1-0:96.5.0*255(001C0104)
-0-0:96.8.0*255(00104443)
-!)";
-*/
-
 using json = nlohmann::ordered_json;
 
 Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
@@ -162,7 +144,8 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   serialPortSettings.c_cflag |= PARENB;
   serialPortSettings.c_cflag &= ~PARODD;
 
-  // await a full 64-byte block (VMIN=64) with 0.5s inter-byte timeout
+  // Non-blocking read:  return immediately with available data (VMIN=0), 0.5s
+  // timeout for first byte (VTIME=5)
   serialPortSettings.c_cc[VMIN] = BUFFER_SIZE;
   serialPortSettings.c_cc[VTIME] = 5;
 
@@ -193,36 +176,45 @@ std::expected<void, MeterError> Meter::readTelegram() {
         MeterError::fromErrno("readTelegram(): Meter not connected"));
 
   std::vector<char> buffer(BUFFER_SIZE);
-  size_t bufPos = 0;
-  ssize_t bytesReceived = 0;
-
   std::vector<char> packet(TELEGRAM_SIZE);
   size_t packetPos = 0;
   bool messageBegin = false;
+  bool telegramComplete = false;
 
-  while (packetPos < TELEGRAM_SIZE) {
-    if (bufPos >= static_cast<std::size_t>(bytesReceived)) {
-      std::fill(buffer.begin(), buffer.end(), '\0');
-
-      bytesReceived = ::read(serialPort_, buffer.data(), BUFFER_SIZE);
-      if (bytesReceived == -1) {
-        return std::unexpected(
-            MeterError::fromErrno("Failed to read serial device"));
-      }
-      if (bytesReceived == 0) {
-        return std::unexpected(
-            MeterError::custom(EOF, "readTelegram(): serial device closed"));
-      }
-      bufPos = 0;
+  // In readTelegram():
+  while (packetPos < TELEGRAM_SIZE && !telegramComplete) {
+    // Add shutdown check BEFORE blocking read
+    if (!handler_.isRunning()) {
+      return std::unexpected(
+          MeterError::custom(EINTR, "readTelegram(): Shutdown in progress"));
     }
 
-    // consume one char from the buffer
-    char c = buffer[bufPos++];
-    if (c == '/')
-      messageBegin = true;
+    std::fill(buffer.begin(), buffer.end(), '\0');
+    ssize_t bytesReceived = ::read(serialPort_, buffer.data(), BUFFER_SIZE);
 
-    if (messageBegin) {
-      packet[packetPos++] = c;
+    if (bytesReceived == -1) {
+      return std::unexpected(
+          MeterError::fromErrno("Failed to read serial device"));
+    }
+
+    if (bytesReceived == 0) {
+      // Timeout - shouldn't happen mid-telegram
+      return std::unexpected(
+          MeterError::custom(ETIMEDOUT, "readTelegram(): Timeout during read"));
+    }
+
+    // Process bytes
+    for (ssize_t i = 0; i < bytesReceived && packetPos < TELEGRAM_SIZE; ++i) {
+      char c = buffer[i];
+      if (c == '/')
+        messageBegin = true;
+      if (messageBegin) {
+        packet[packetPos++] = c;
+        if (packetPos >= 3 && packet[packetPos - 3] == '!') {
+          telegramComplete = true;
+          break;
+        }
+      }
     }
   }
 
@@ -233,11 +225,11 @@ std::expected<void, MeterError> Meter::readTelegram() {
   }
 
   meterLogger_->trace("Received telegram (len {}):\n{}", packetPos,
-                      std::string(packet.begin(), packet.end()));
+                      std::string(packet.begin(), packet.begin() + packetPos));
 
   {
     std::lock_guard<std::mutex> lock(cbMutex_);
-    telegram_.assign(packet.begin(), packet.end());
+    telegram_.assign(packet.begin(), packet.begin() + packetPos);
   }
 
   return {};
@@ -303,6 +295,10 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
         } else if (obis == "1-0:72.7.0*255") {
           size_t pos = value_unit.find("*");
           values.phase3.voltage = std::stod(value_unit.substr(0, pos));
+        } else if (obis == "0-0:96.8.0*255") {
+          size_t pos = value_unit.find("*");
+          values.activeSensorTime =
+              std::stoul(value_unit.substr(0, pos), nullptr, 16);
         }
       } else {
         throw std::invalid_argument("Malformed OBEX expression");
@@ -343,6 +339,7 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
   newJson["energy"] = JsonUtils::roundTo(values.energy, 1);
   newJson["power"] = JsonUtils::roundTo(values.power, 0);
   newJson["phases"] = phases;
+  newJson["active_time"] = values.activeSensorTime;
 
   // Update shared values and JSON with lock
   {
@@ -366,7 +363,7 @@ void Meter::runLoop() {
     if (connectAction == Meter::ErrorAction::SHUTDOWN)
       break;
 
-    if (connectAction == Meter::ErrorAction::RECONNECT) {
+    else if (connectAction == Meter::ErrorAction::RECONNECT) {
       meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
                          reconnectDelay,
                          reconnectDelay == 1 ? "second" : "seconds");
@@ -385,12 +382,18 @@ void Meter::runLoop() {
     }
 
     // Read telegram - on any error, loop restarts (will try reconnect)
-    if (handleResult(readTelegram()) != Meter::ErrorAction::NONE)
+    auto readAction = handleResult(readTelegram());
+    if (readAction == Meter::ErrorAction::SHUTDOWN)
       break;
+    else if (readAction == Meter::ErrorAction::RECONNECT)
+      continue;
 
     // Update values
-    if (handleResult(updateValuesAndJson()) != Meter::ErrorAction::NONE)
+    auto updateAction = handleResult(updateValuesAndJson());
+    if (updateAction == Meter::ErrorAction::SHUTDOWN)
       break;
+    else if (updateAction == Meter::ErrorAction::RECONNECT)
+      continue;
 
     // Activate callback
     {
@@ -401,11 +404,5 @@ void Meter::runLoop() {
     }
   }
 
-  /*
-      // --- Wait for next update interval ---
-      std::unique_lock<std::mutex> lock(cbMutex_);
-      cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
-                   [this] { return !handler_.isRunning(); });
-  */
   meterLogger_->debug("Meter run loop stopped.");
 }

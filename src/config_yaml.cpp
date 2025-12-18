@@ -90,7 +90,6 @@ static MeterConfig parseMeter(const YAML::Node &node) {
   cfg.dataBits = node["data_bits"].as<int>(7);
   cfg.stopBits = node["stop_bits"].as<int>(1);
   cfg.parity = parseParity(node["parity"].as<std::string>("even"));
-  cfg.updateInterval = node["update_interval"].as<int>(5);
 
   // --- Optional reconnect delay ---
   if (node["reconnect_delay"])
@@ -105,9 +104,6 @@ static MeterConfig parseMeter(const YAML::Node &node) {
 
   if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
     throw std::invalid_argument("meter.stop_bits must be 1 or 2");
-
-  if (cfg.updateInterval <= 0)
-    throw std::invalid_argument("modbus.update_interval must be positive");
 
   return cfg;
 }

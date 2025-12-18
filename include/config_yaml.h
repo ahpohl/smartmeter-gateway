@@ -41,7 +41,6 @@ struct MeterConfig {
   int dataBits;
   int stopBits;
   SerialParity parity;
-  int updateInterval;
 
   // Optional retry parameters
   std::optional<ReconnectDelayConfig> reconnectDelay;

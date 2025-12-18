@@ -25,6 +25,7 @@ public:
 
   struct Values {
     uint64_t time{0};
+    uint64_t activeSensorTime{0};
     double energy{0.0};
     double power{0.0};
     Phase phase1;
