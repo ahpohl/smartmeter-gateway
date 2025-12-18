@@ -68,16 +68,26 @@ void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
   updateCallback_ = std::move(cb);
 }
 
-void Meter::errorHandler(const MeterError &err) {
+Meter::ErrorAction
+Meter::handleResult(std::expected<void, MeterError> &&result) {
+  if (result) {
+    return Meter::ErrorAction::NONE;
+  }
+
+  const MeterError &err = result.error();
+
   if (err.severity == MeterError::Severity::FATAL) {
     meterLogger_->error("FATAL Meter error: {}", err.describe());
-
-    // FATAL error: terminate main loop
     handler_.shutdown();
+    return Meter::ErrorAction::SHUTDOWN;
 
   } else if (err.severity == MeterError::Severity::TRANSIENT) {
     meterLogger_->debug("Transient Meter error: {}", err.describe());
+    disconnect();
+    return Meter::ErrorAction::RECONNECT;
   }
+
+  return Meter::ErrorAction::NONE;
 }
 
 std::expected<void, MeterError> Meter::tryConnect(void) {
@@ -351,11 +361,12 @@ void Meter::runLoop() {
 
   while (handler_.isRunning()) {
 
-    auto conn = tryConnect();
-    if (!conn) {
-      errorHandler(conn.error());
-      if (!handler_.isRunning())
-        break;
+    // Connect to meter
+    auto connectAction = handleResult(tryConnect());
+    if (connectAction == Meter::ErrorAction::SHUTDOWN)
+      break;
+
+    if (connectAction == Meter::ErrorAction::RECONNECT) {
       meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
                          reconnectDelay,
                          reconnectDelay == 1 ? "second" : "seconds");
@@ -367,47 +378,34 @@ void Meter::runLoop() {
       if (cfg_.reconnectDelay->exponential && handler_.isRunning())
         reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
-    } else {
-      if (cfg_.reconnectDelay->exponential)
-        reconnectDelay = cfg_.reconnectDelay->min;
+    } else if (connectAction == Meter::ErrorAction::NONE &&
+               cfg_.reconnectDelay->exponential) {
+      // Successfully connected - reset reconnect delay
+      reconnectDelay = cfg_.reconnectDelay->min;
     }
 
-    auto data = readTelegram();
-    if (!data) {
-      errorHandler(data.error());
-      if (!handler_.isRunning())
-        break;
-      disconnect();
-      continue;
-    }
+    // Read telegram - on any error, loop restarts (will try reconnect)
+    if (handleResult(readTelegram()) != Meter::ErrorAction::NONE)
+      break;
 
-    auto update = updateValuesAndJson();
-    if (!update) {
-      errorHandler(update.error());
-      if (!handler_.isRunning())
-        break;
-      disconnect();
-      continue;
-    } else {
+    // Update values
+    if (handleResult(updateValuesAndJson()) != Meter::ErrorAction::NONE)
+      break;
+
+    // Activate callback
+    {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (updateCallback_) {
-        try {
-          updateCallback_(json_.dump());
-        } catch (const std::exception &ex) {
-          errorHandler(MeterError::custom(
-              EINVAL, "Meter update callback failed: {}", ex.what()));
-          if (!handler_.isRunning())
-            break;
-        }
+        updateCallback_(json_.dump());
       }
     }
-    /*
-        // --- Wait for next update interval ---
-        std::unique_lock<std::mutex> lock(cbMutex_);
-        cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
-                     [this] { return !handler_.isRunning(); });
-    */
   }
 
+  /*
+      // --- Wait for next update interval ---
+      std::unique_lock<std::mutex> lock(cbMutex_);
+      cv_.wait_for(lock, std::chrono::seconds(cfg_.updateInterval),
+                   [this] { return !handler_.isRunning(); });
+  */
   meterLogger_->debug("Meter run loop stopped.");
 }

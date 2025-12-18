@@ -41,7 +41,8 @@ public:
 
 private:
   void runLoop();
-  void errorHandler(const MeterError &err);
+  enum class ErrorAction { NONE, RECONNECT, SHUTDOWN };
+  Meter::ErrorAction handleResult(std::expected<void, MeterError> &&result);
   void disconnect(void);
   std::expected<void, MeterError> updateValuesAndJson(void);
   std::expected<void, MeterError> tryConnect(void);
