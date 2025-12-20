@@ -72,6 +72,9 @@ MqttClient::~MqttClient() {
 }
 
 void MqttClient::publish(const std::string &payload, const std::string &topic) {
+  if (!handler_.isRunning())
+    return;
+
   std::unique_lock<std::mutex> lock(mutex_);
 
   // Duplicate suppression per topic

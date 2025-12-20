@@ -53,11 +53,13 @@ int main(int argc, char *argv[]) {
   // --- Setup signals and shutdown
   SignalHandler handler;
 
+  // --- Start MQTT consumer ---
+  MqttClient mqtt(cfg.mqtt, handler);
+
   // --- Start meter
   Meter meter(cfg.meter, handler);
 
-  // --- Start MQTT consumer ---
-  MqttClient mqtt(cfg.mqtt, handler);
+  // --- Setup callback
   meter.setUpdateCallback([&mqtt, &cfg](const nlohmann::ordered_json &json) {
     mqtt.publish(json, cfg.mqtt.topic + "/values");
   });
