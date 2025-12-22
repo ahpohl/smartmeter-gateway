@@ -43,11 +43,19 @@ void Meter::disconnect(void) {
     }
   }
   meterLogger_->info("Meter disconnected");
+  if (availabilityCallback_)
+    availabilityCallback_("disconnected");
 }
 
 void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
+}
+
+void Meter::setAvailabilityCallback(
+    std::function<void(const std::string &)> cb) {
+  std::lock_guard<std::mutex> lock(cbMutex_);
+  availabilityCallback_ = std::move(cb);
 }
 
 Meter::ErrorAction
@@ -169,6 +177,8 @@ std::expected<void, MeterError> Meter::tryConnect(void) {
   tcflush(serialPort_, TCIOFLUSH);
 
   meterLogger_->info("Meter connected");
+  if (availabilityCallback_)
+    availabilityCallback_("connected");
 
   return {};
 }

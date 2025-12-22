@@ -59,9 +59,12 @@ int main(int argc, char *argv[]) {
   // --- Start meter
   Meter meter(cfg.meter, handler);
 
-  // --- Setup callback
-  meter.setUpdateCallback([&mqtt, &cfg](const nlohmann::ordered_json &json) {
-    mqtt.publish(json, cfg.mqtt.topic + "/values");
+  // --- Setup callbacks
+  meter.setUpdateCallback([&mqtt, &cfg](const std::string &jsonDump) {
+    mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
+  });
+  meter.setAvailabilityCallback([&mqtt, &cfg](const std::string &availability) {
+    mqtt.publish(availability, cfg.mqtt.topic + "/availability");
   });
 
   // --- Wait for shutdown signal ---

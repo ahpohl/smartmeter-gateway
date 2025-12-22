@@ -23,7 +23,7 @@ modbus:
   use_float_model: false
       
 mqtt:
-  broker: 192.168.6.80
+  broker: geapoh.home.arpa
   port: 1883
   topic: smartmeter-gateway
   #user: mqtt
@@ -40,4 +40,4 @@ logger:
     main: info
     meter: debug
     modbus: info
-    mqtt: info
+    mqtt: debug

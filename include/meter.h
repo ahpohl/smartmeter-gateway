@@ -36,6 +36,7 @@ public:
   std::string getJsonDump(void) const;
   Values getValues(void) const;
   void setUpdateCallback(std::function<void(const std::string &)> cb);
+  void setAvailabilityCallback(std::function<void(const std::string &)> cb);
 
   static constexpr size_t BUFFER_SIZE = 64;
   static constexpr size_t TELEGRAM_SIZE = 368;
@@ -57,7 +58,8 @@ private:
   int serialPort_{-1};
 
   // --- threading / callbacks ---
-  std::function<void(const nlohmann::ordered_json &)> updateCallback_;
+  std::function<void(const std::string &)> updateCallback_;
+  std::function<void(const std::string &)> availabilityCallback_;
   SignalHandler &handler_;
   mutable std::mutex cbMutex_;
   std::condition_variable cv_;
