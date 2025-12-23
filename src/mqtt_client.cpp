@@ -71,10 +71,12 @@ MqttClient::~MqttClient() {
   mosquitto_lib_cleanup();
 }
 
-void MqttClient::publish(const std::string &payload, const std::string &topic) {
-  if (!handler_.isRunning())
-    return;
+bool MqttClient::hasQueuedMessages() const {
+  return std::any_of(topicQueues_.begin(), topicQueues_.end(),
+                     [](const auto &p) { return !p.second.empty(); });
+}
 
+void MqttClient::publish(const std::string &payload, const std::string &topic) {
   std::unique_lock<std::mutex> lock(mutex_);
 
   // Duplicate suppression per topic
@@ -118,14 +120,18 @@ void MqttClient::run() {
     std::unique_lock<std::mutex> lock(mutex_);
 
     cv_.wait(lock, [&] {
-      return connected_.load() &&
-                 std::any_of(topicQueues_.begin(), topicQueues_.end(),
-                             [](auto &p) { return !p.second.empty(); }) ||
+      return (connected_.load() && hasQueuedMessages()) ||
              !handler_.isRunning();
     });
 
-    if (!handler_.isRunning())
-      break;
+    if (!handler_.isRunning()) {
+      if (!connected_.load()) {
+        break;
+      }
+      if (hasQueuedMessages()) {
+        mqttLogger_->debug("Shutdown detected, flushing remaining messages");
+      }
+    }
 
     for (auto &[topic, q] : topicQueues_) {
       while (!q.empty() && connected_.load()) {

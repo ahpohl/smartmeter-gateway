@@ -44,6 +44,7 @@ private:
   std::map<std::string, std::queue<QueuedMessage>> topicQueues_;
   std::unordered_map<std::string, std::size_t> lastPayloadHashes_;
   std::map<std::string, size_t> droppedCount_;
+  bool hasQueuedMessages() const;
 
   // --- callbacks
   static void onConnect(struct mosquitto *mosq, void *obj, int rc);
