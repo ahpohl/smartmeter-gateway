@@ -33,9 +33,19 @@ public:
     Phase phase3;
   };
 
+  struct Device {
+    std::string manufacturer;
+    std::string model;
+    std::string serialNumber;
+    std::string fwVersion;
+    std::string status;
+    int phases{0};
+  };
+
   std::string getJsonDump(void) const;
   Values getValues(void) const;
   void setUpdateCallback(std::function<void(const std::string &)> cb);
+  void setDeviceCallback(std::function<void(const std::string &)> cb);
   void setAvailabilityCallback(std::function<void(const std::string &)> cb);
 
   static constexpr size_t BUFFER_SIZE = 64;
@@ -47,18 +57,22 @@ private:
   Meter::ErrorAction handleResult(std::expected<void, MeterError> &&result);
   void disconnect(void);
   std::expected<void, MeterError> updateValuesAndJson(void);
+  std::expected<void, MeterError> updateDeviceAndJson(void);
   std::expected<void, MeterError> tryConnect(void);
   std::expected<void, MeterError> readTelegram(void);
 
   const MeterConfig &cfg_;
   Values values_;
+  Device device_;
   std::string telegram_;
-  nlohmann::ordered_json json_;
+  nlohmann::ordered_json jsonValues_;
+  nlohmann::json jsonDevice_;
   std::shared_ptr<spdlog::logger> meterLogger_;
   int serialPort_{-1};
 
   // --- threading / callbacks ---
   std::function<void(const std::string &)> updateCallback_;
+  std::function<void(const std::string &)> deviceCallback_;
   std::function<void(const std::string &)> availabilityCallback_;
   SignalHandler &handler_;
   mutable std::mutex cbMutex_;

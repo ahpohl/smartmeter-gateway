@@ -63,6 +63,9 @@ int main(int argc, char *argv[]) {
   meter.setUpdateCallback([&mqtt, &cfg](const std::string &jsonDump) {
     mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
   });
+  meter.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump) {
+    mqtt.publish(jsonDump, cfg.mqtt.topic + "/device");
+  });
   meter.setAvailabilityCallback([&mqtt, &cfg](const std::string &availability) {
     mqtt.publish(availability, cfg.mqtt.topic + "/availability");
   });

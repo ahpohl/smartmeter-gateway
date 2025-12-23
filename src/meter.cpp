@@ -1,4 +1,5 @@
 #include "meter.h"
+#include "config.h"
 #include "config_yaml.h"
 #include "json_utils.h"
 #include "meter_error.h"
@@ -42,14 +43,21 @@ void Meter::disconnect(void) {
       serialPort_ = -1;
     }
   }
-  meterLogger_->info("Meter disconnected");
+
   if (availabilityCallback_)
     availabilityCallback_("disconnected");
+
+  meterLogger_->info("Meter disconnected");
 }
 
 void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
+}
+
+void Meter::setDeviceCallback(std::function<void(const std::string &)> cb) {
+  std::lock_guard<std::mutex> lock(cbMutex_);
+  deviceCallback_ = std::move(cb);
 }
 
 void Meter::setAvailabilityCallback(
@@ -74,7 +82,7 @@ Meter::handleResult(std::expected<void, MeterError> &&result) {
 
   } else if (err.severity == MeterError::Severity::TRANSIENT) {
     // Temporary error - disconnect and reconnect
-    meterLogger_->debug("Transient Meter error: {}", err.describe());
+    meterLogger_->warn("Transient Meter error: {}", err.describe());
     disconnect();
     return Meter::ErrorAction::RECONNECT;
 
@@ -363,10 +371,90 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
   {
     std::lock_guard<std::mutex> lock(cbMutex_);
     values_ = std::move(values);
-    json_ = std::move(newJson);
+    jsonValues_ = std::move(newJson);
   }
 
-  meterLogger_->debug("{}", json_.dump());
+  meterLogger_->debug("{}", jsonValues_.dump());
+
+  return {};
+}
+
+std::expected<void, MeterError> Meter::updateDeviceAndJson() {
+  if (!handler_.isRunning()) {
+    return std::unexpected(MeterError::custom(
+        EINTR, "updateDeviceAndJson(): Shutdown in progress"));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    if (telegram_.empty())
+      return {};
+  }
+
+  Device newDevice{};
+
+  std::istringstream iss;
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    iss.str(telegram_);
+  }
+
+  std::regex lineRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
+  std::string line;
+
+  int lineNum = 0;
+  while (std::getline(iss, line)) {
+    ++lineNum;
+    line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
+
+    if (line.empty() || (line.size() && (line[0] == '/' || line[0] == '!')))
+      continue;
+
+    try {
+      std::smatch match;
+      if (std::regex_search(line, match, lineRegex)) {
+        std::string obis = match[1];
+
+        if (obis == "1-0:96.1.0*255") {
+          newDevice.serialNumber = match[2];
+        } else if (obis == "1-0:96.5.0*255") {
+          newDevice.status = match[2];
+        }
+      } else {
+        throw std::invalid_argument("Malformed OBEX expression");
+      }
+
+    } catch (const std::exception &err) {
+      std::ostringstream oss;
+      oss << "[" << line << "]: " << err.what();
+      return std::unexpected(MeterError::custom(EPROTO, oss.str()));
+    }
+  }
+
+  newDevice.manufacturer = "EasyMeter";
+  newDevice.model = "DD3-BZ06-ETA-ODZ1";
+  newDevice.fwVersion = std::string(PROJECT_NAME) + " v" + PROJECT_VERSION +
+                        " (" + GIT_COMMIT_HASH + ")";
+  newDevice.phases = 3;
+
+  // ---- Build ordered JSON ----
+  json newJson;
+
+  newJson["manufacturer"] = newDevice.manufacturer;
+  newJson["model"] = newDevice.model;
+  newJson["serial_number"] = newDevice.serialNumber;
+  newJson["firmware_version"] = newDevice.fwVersion;
+  newJson["phases"] = newDevice.phases;
+  newJson["status"] = newDevice.status;
+
+  meterLogger_->debug("{}", newJson.dump());
+
+  // ---- Commit values ----
+  {
+    std::lock_guard<std::mutex> lock(cbMutex_);
+    jsonDevice_ = std::move(newJson);
+    device_ = std::move(newDevice);
+  }
 
   return {};
 }
@@ -406,6 +494,20 @@ void Meter::runLoop() {
     else if (readAction == Meter::ErrorAction::RECONNECT)
       continue;
 
+    // Update device
+    auto deviceAction = handleResult(updateDeviceAndJson());
+    if (deviceAction == Meter::ErrorAction::SHUTDOWN)
+      break;
+    else if (deviceAction == Meter::ErrorAction::RECONNECT)
+      continue;
+
+    if (handler_.isRunning()) {
+      std::lock_guard<std::mutex> lock(cbMutex_);
+      if (deviceCallback_) {
+        deviceCallback_(jsonDevice_.dump());
+      }
+    }
+
     // Update values
     auto updateAction = handleResult(updateValuesAndJson());
     if (updateAction == Meter::ErrorAction::SHUTDOWN)
@@ -413,11 +515,10 @@ void Meter::runLoop() {
     else if (updateAction == Meter::ErrorAction::RECONNECT)
       continue;
 
-    // Activate callback
-    {
+    if (handler_.isRunning()) {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (updateCallback_) {
-        updateCallback_(json_.dump());
+        updateCallback_(jsonValues_.dump());
       }
     }
   }
