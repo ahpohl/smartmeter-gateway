@@ -166,8 +166,6 @@ void MqttClient::run() {
 
 void MqttClient::onConnect(struct mosquitto *, void *obj, int rc) {
   MqttClient *self = static_cast<MqttClient *>(obj);
-  if (!self || !self->mqttLogger_)
-    return;
 
   self->connected_ = (rc == 0);
   self->cv_.notify_one();
@@ -181,8 +179,6 @@ void MqttClient::onConnect(struct mosquitto *, void *obj, int rc) {
 
 void MqttClient::onDisconnect(struct mosquitto *mosq, void *obj, int rc) {
   MqttClient *self = static_cast<MqttClient *>(obj);
-  if (!self || !self->mqttLogger_)
-    return;
 
   self->connected_ = false;
 
@@ -198,8 +194,6 @@ void MqttClient::onDisconnect(struct mosquitto *mosq, void *obj, int rc) {
 void MqttClient::onLog(struct mosquitto *mosq, void *obj, int level,
                        const char *str) {
   MqttClient *self = static_cast<MqttClient *>(obj);
-  if (!self || !self->mqttLogger_)
-    return;
 
   // Map mosquitto log levels to spdlog
   spdlog::level::level_enum spdLevel = spdlog::level::info;
