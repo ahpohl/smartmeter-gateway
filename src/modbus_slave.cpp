@@ -1,5 +1,8 @@
 #include "modbus_slave.h"
+#include "modbus_error.h"
 #include "signal_handler.h"
+#include <expected>
+#include <modbus/modbus.h>
 
 ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
                          SignalHandler &signalHandler)
@@ -8,8 +11,6 @@ ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
   modbusLogger_ = spdlog::get("modbus");
   if (!modbusLogger_)
     modbusLogger_ = spdlog::default_logger();
-
-  regs_.resize(0xFFFF, 0);
 }
 
 ModbusSlave::~ModbusSlave() {
@@ -17,5 +18,10 @@ ModbusSlave::~ModbusSlave() {
   if (worker_.joinable())
     worker_.join();
 
+  modbus_mapping_free(regs_);
+  modbus_free(ctx_);
+
   modbusLogger_->info("Modbus slave stopped");
 }
+
+std::expected<void, ModbusError> ModbusSlave::startListener(void) { return {}; }

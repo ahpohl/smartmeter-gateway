@@ -2,13 +2,14 @@
 #define MODBUS_SLAVE_H_
 
 #include "config_yaml.h"
+#include "modbus_error.h"
 #include "signal_handler.h"
 #include <atomic>
 #include <condition_variable>
-#include <cstdint>
+#include <expected>
+#include <modbus/modbus.h>
 #include <mutex>
 #include <thread>
-#include <vector>
 
 class ModbusSlave {
 public:
@@ -16,11 +17,14 @@ public:
   virtual ~ModbusSlave();
 
 private:
+  void runLoop();
+  std::expected<void, ModbusError> startListener(void);
   std::shared_ptr<spdlog::logger> modbusLogger_;
   const ModbusRootConfig &cfg_;
 
-  // --- values and events
-  std::vector<uint16_t> regs_;
+  // --- modbus registers and values
+  modbus_t *ctx_{nullptr};
+  modbus_mapping_t *regs_{nullptr};
 
   // --- threading / callbacks ---
   SignalHandler &handler_;

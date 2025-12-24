@@ -2,6 +2,7 @@
 #include "config_yaml.h"
 #include "logger.h"
 #include "meter.h"
+#include "meter_types.h"
 #include "modbus_slave.h"
 #include "mqtt_client.h"
 #include "signal_handler.h"
@@ -63,10 +64,12 @@ int main(int argc, char *argv[]) {
   Meter meter(cfg.meter, handler);
 
   // --- Setup callbacks
-  meter.setUpdateCallback([&mqtt, &cfg](const std::string &jsonDump) {
+  meter.setUpdateCallback([&mqtt, &cfg](const std::string &jsonDump,
+                                        const MeterTypes::Values &values) {
     mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
   });
-  meter.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump) {
+  meter.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump,
+                                        const MeterTypes::Device &device) {
     mqtt.publish(jsonDump, cfg.mqtt.topic + "/device");
   });
   meter.setAvailabilityCallback([&mqtt, &cfg](const std::string &availability) {

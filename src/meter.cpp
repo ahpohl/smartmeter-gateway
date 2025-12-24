@@ -51,12 +51,14 @@ void Meter::disconnect(void) {
   }
 }
 
-void Meter::setUpdateCallback(std::function<void(const std::string &)> cb) {
+void Meter::setUpdateCallback(
+    std::function<void(const std::string &, const MeterTypes::Values &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
 }
 
-void Meter::setDeviceCallback(std::function<void(const std::string &)> cb) {
+void Meter::setDeviceCallback(
+    std::function<void(const std::string &, const MeterTypes::Device &)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   deviceCallback_ = std::move(cb);
 }
@@ -505,7 +507,7 @@ void Meter::runLoop() {
     if (handler_.isRunning()) {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (deviceCallback_) {
-        deviceCallback_(jsonDevice_.dump());
+        deviceCallback_(jsonDevice_.dump(), device_);
       }
     }
 
@@ -519,7 +521,7 @@ void Meter::runLoop() {
     if (handler_.isRunning()) {
       std::lock_guard<std::mutex> lock(cbMutex_);
       if (updateCallback_) {
-        updateCallback_(jsonValues_.dump());
+        updateCallback_(jsonValues_.dump(), values_);
       }
     }
   }

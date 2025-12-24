@@ -21,8 +21,10 @@ public:
 
   std::string getJsonDump(void) const;
   MeterTypes::Values getValues(void) const;
-  void setUpdateCallback(std::function<void(const std::string &)> cb);
-  void setDeviceCallback(std::function<void(const std::string &)> cb);
+  void setUpdateCallback(
+      std::function<void(const std::string &, const MeterTypes::Values &)> cb);
+  void setDeviceCallback(
+      std::function<void(const std::string &, const MeterTypes::Device &)> cb);
   void setAvailabilityCallback(std::function<void(const std::string &)> cb);
 
   static constexpr size_t BUFFER_SIZE = 64;
@@ -48,8 +50,10 @@ private:
   int serialPort_{-1};
 
   // --- threading / callbacks ---
-  std::function<void(const std::string &)> updateCallback_;
-  std::function<void(const std::string &)> deviceCallback_;
+  std::function<void(const std::string &, const MeterTypes::Values &)>
+      updateCallback_;
+  std::function<void(const std::string &, const MeterTypes::Device &)>
+      deviceCallback_;
   std::function<void(const std::string &)> availabilityCallback_;
   SignalHandler &handler_;
   mutable std::mutex cbMutex_;
