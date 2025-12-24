@@ -63,6 +63,11 @@ MqttClient::~MqttClient() {
 
   if (mosq_) {
     mosquitto_disconnect(mosq_);
+
+    // Give the disconnect callback time to execute and log
+    // mosquitto_disconnect() is async, the callback runs on another thread
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     mosquitto_loop_stop(mosq_, true);
     mosquitto_destroy(mosq_);
     mosq_ = nullptr;
@@ -161,6 +166,9 @@ void MqttClient::run() {
 
 void MqttClient::onConnect(struct mosquitto *, void *obj, int rc) {
   MqttClient *self = static_cast<MqttClient *>(obj);
+  if (!self || !self->mqttLogger_)
+    return;
+
   self->connected_ = (rc == 0);
   self->cv_.notify_one();
 
@@ -173,10 +181,13 @@ void MqttClient::onConnect(struct mosquitto *, void *obj, int rc) {
 
 void MqttClient::onDisconnect(struct mosquitto *mosq, void *obj, int rc) {
   MqttClient *self = static_cast<MqttClient *>(obj);
+  if (!self || !self->mqttLogger_)
+    return;
+
   self->connected_ = false;
 
   if (rc == 0) {
-    self->mqttLogger_->info("MQTT disconnected cleanly");
+    self->mqttLogger_->info("MQTT disconnected");
   } else {
     self->mqttLogger_->warn(
         "MQTT disconnected unexpectedly: {} ({}), will retry...",
@@ -187,6 +198,8 @@ void MqttClient::onDisconnect(struct mosquitto *mosq, void *obj, int rc) {
 void MqttClient::onLog(struct mosquitto *mosq, void *obj, int level,
                        const char *str) {
   MqttClient *self = static_cast<MqttClient *>(obj);
+  if (!self || !self->mqttLogger_)
+    return;
 
   // Map mosquitto log levels to spdlog
   spdlog::level::level_enum spdLevel = spdlog::level::info;
