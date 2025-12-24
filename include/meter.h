@@ -3,6 +3,7 @@
 
 #include "config_yaml.h"
 #include "meter_error.h"
+#include "meter_types.h"
 #include "signal_handler.h"
 #include <condition_variable>
 #include <expected>
@@ -18,32 +19,8 @@ public:
   explicit Meter(const MeterConfig &cfg, SignalHandler &signalHandler);
   virtual ~Meter();
 
-  struct Phase {
-    double voltage{0.0};
-    double power{0.0};
-  };
-
-  struct Values {
-    uint64_t time{0};
-    uint64_t activeSensorTime{0};
-    double energy{0.0};
-    double power{0.0};
-    Phase phase1;
-    Phase phase2;
-    Phase phase3;
-  };
-
-  struct Device {
-    std::string manufacturer;
-    std::string model;
-    std::string serialNumber;
-    std::string fwVersion;
-    std::string status;
-    int phases{0};
-  };
-
   std::string getJsonDump(void) const;
-  Values getValues(void) const;
+  MeterTypes::Values getValues(void) const;
   void setUpdateCallback(std::function<void(const std::string &)> cb);
   void setDeviceCallback(std::function<void(const std::string &)> cb);
   void setAvailabilityCallback(std::function<void(const std::string &)> cb);
@@ -62,8 +39,8 @@ private:
   std::expected<void, MeterError> readTelegram(void);
 
   const MeterConfig &cfg_;
-  Values values_;
-  Device device_;
+  MeterTypes::Values values_;
+  MeterTypes::Device device_;
   std::string telegram_;
   nlohmann::ordered_json jsonValues_;
   nlohmann::json jsonDevice_;

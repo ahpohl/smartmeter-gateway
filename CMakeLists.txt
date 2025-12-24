@@ -72,7 +72,7 @@ set(SRC_FILES
     src/config_yaml.cpp
     src/mqtt_client.cpp
     src/meter.cpp
-    #src/modbus_slave.cpp
+    src/modbus_slave.cpp
 )
 
 # --- Executable ---

@@ -3,6 +3,7 @@
 #include "config_yaml.h"
 #include "json_utils.h"
 #include "meter_error.h"
+#include "meter_types.h"
 #include "signal_handler.h"
 #include <algorithm>
 #include <asm-generic/ioctls.h>
@@ -272,7 +273,7 @@ std::expected<void, MeterError> Meter::updateValuesAndJson() {
       return {};
   }
 
-  Values values{};
+  MeterTypes::Values values{};
 
   std::istringstream iss;
   {
@@ -391,7 +392,7 @@ std::expected<void, MeterError> Meter::updateDeviceAndJson() {
       return {};
   }
 
-  Device newDevice{};
+  MeterTypes::Device newDevice{};
 
   std::istringstream iss;
   {

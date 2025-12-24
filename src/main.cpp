@@ -1,8 +1,8 @@
 #include "config.h"
 #include "config_yaml.h"
 #include "logger.h"
-// #include "modbus_slave.h"
 #include "meter.h"
+#include "modbus_slave.h"
 #include "mqtt_client.h"
 #include "signal_handler.h"
 #include <CLI/CLI.hpp>
@@ -56,7 +56,10 @@ int main(int argc, char *argv[]) {
   // --- Start MQTT consumer ---
   MqttClient mqtt(cfg.mqtt, handler);
 
-  // --- Start meter
+  // --- Start Modbus consumer
+  ModbusSlave slave(cfg.modbus, handler);
+
+  // --- Start meter producer
   Meter meter(cfg.meter, handler);
 
   // --- Setup callbacks
