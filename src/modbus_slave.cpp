@@ -29,7 +29,7 @@ ModbusSlave::~ModbusSlave() {
     close(serverSocket_);
   modbus_free(ctx_);
 
-  modbusLogger_->info("Modbus slave stopped");
+  modbusLogger_->info("Stopped Modbus {} listener", (cfg_.tcp ? "TCP" : "RTU"));
 }
 
 std::expected<void, ModbusError> ModbusSlave::startListener(void) {
@@ -185,7 +185,7 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
 
   // Copy entire register block from old to new (fast)
   std::memcpy(newRegs->tab_registers, oldRegs->tab_registers,
-              static_cast<size_t>(65535) * sizeof(uint16_t));
+              static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
   if (cfg_.useFloatModel) {
     modbus_set_float_abcd(values.phase1.voltage,
@@ -193,7 +193,7 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     modbus_set_float_abcd(values.phase2.voltage,
                           &newRegs->tab_registers[M21X::PHVPHB.ADDR]);
     modbus_set_float_abcd(values.phase3.voltage,
-                          &newRegs->tab_registers[M21X::PHVPHB.ADDR]);
+                          &newRegs->tab_registers[M21X::PHVPHC.ADDR]);
     modbus_set_float_abcd(values.power, &newRegs->tab_registers[M21X::W.ADDR]);
     modbus_set_float_abcd(values.phase1.power,
                           &newRegs->tab_registers[M21X::WPHA.ADDR]);

@@ -204,15 +204,30 @@ private:
    */
   static Severity deduceSeverity(int c) {
     switch (c) {
-    case EINVAL:    // Invalid argument
-    case ENOMEM:    // Out of memory
-    case ENOENT:    // No such file or directory
-    case EMBMDATA:  // Too many registers requested
-    case EMBXILFUN: // Illegal function
-    case EMBXILADD: // Illegal data address
-    case EMBXILVAL: // Illegal data value
-    case EMBXSFAIL: // Slave device or server failure
-    case EMBXGTAR:  // Gateway target device failed to respond
+    case EINVAL:       // Invalid argument
+    case ENOMEM:       // Out of memory
+    case ENOENT:       // No such file or directory
+    case EMBMDATA:     // Too many registers requested
+    case EMBXILFUN:    // Illegal function
+    case EMBXILADD:    // Illegal data address
+    case EMBXILVAL:    // Illegal data value
+    case EMBXSFAIL:    // Slave device or server failure
+    case EMBXGTAR:     // Gateway target device failed to respond
+    case ENODEV:       // No such device
+    case ENXIO:        // No such device or address
+    case EACCES:       // Permission denied
+    case EPERM:        // Operation not permitted
+    case ENOTDIR:      // Not a directory
+    case EISDIR:       // Is a directory
+    case ENAMETOOLONG: // File name too long
+    case ELOOP:        // Too many symbolic links
+    case EMFILE:       // Process limit for file descriptors reached
+    case ENFILE:       // System-wide file descriptor table full
+    case ENOTTY:       // Not a terminal
+    case EBADF:        // Bad file descriptor
+    case EAGAIN:       // Resource temporarily unavailable
+    case EIO:          // Low-level I/O error
+    case EBUSY:        // Device or resource busy
       return Severity::FATAL;
     case EINTR: // Call was interrupted by a signal
       return Severity::SHUTDOWN;

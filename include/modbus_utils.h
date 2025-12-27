@@ -18,7 +18,7 @@ inline std::expected<void, ModbusError> stringToModbus(uint16_t *dest,
     return std::unexpected(ModbusError::custom(
         EINVAL,
         "stringToModbus(): String length {} exceeds maximum "
-        "of 32 characters for String32 register.",
+        "of 32 characters for String32 register",
         src.length()));
   }
   for (int i = 0; i < src.length() / 2; i++) {

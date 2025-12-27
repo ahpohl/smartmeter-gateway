@@ -2,8 +2,8 @@
 #define METER_H_
 
 #include "config_yaml.h"
-#include "meter_error.h"
 #include "meter_types.h"
+#include "modbus_error.h"
 #include "signal_handler.h"
 #include <condition_variable>
 #include <expected>
@@ -33,12 +33,12 @@ public:
 private:
   void runLoop();
   MeterTypes::ErrorAction
-  handleResult(std::expected<void, MeterError> &&result);
+  handleResult(std::expected<void, ModbusError> &&result);
   void disconnect(void);
-  std::expected<void, MeterError> updateValuesAndJson(void);
-  std::expected<void, MeterError> updateDeviceAndJson(void);
-  std::expected<void, MeterError> tryConnect(void);
-  std::expected<void, MeterError> readTelegram(void);
+  std::expected<void, ModbusError> updateValuesAndJson(void);
+  std::expected<void, ModbusError> updateDeviceAndJson(void);
+  std::expected<void, ModbusError> tryConnect(void);
+  std::expected<void, ModbusError> readTelegram(void);
 
   const MeterConfig &cfg_;
   MeterTypes::Values values_;
