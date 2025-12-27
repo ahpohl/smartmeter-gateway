@@ -21,19 +21,19 @@ public:
 
   std::string getJsonDump(void) const;
   MeterTypes::Values getValues(void) const;
-  void setUpdateCallback(
-      std::function<void(const std::string &, const MeterTypes::Values &)> cb);
-  void setDeviceCallback(
-      std::function<void(const std::string &, const MeterTypes::Device &)> cb);
-  void setAvailabilityCallback(std::function<void(const std::string &)> cb);
+  void
+  setUpdateCallback(std::function<void(std::string, MeterTypes::Values)> cb);
+  void
+  setDeviceCallback(std::function<void(std::string, MeterTypes::Device)> cb);
+  void setAvailabilityCallback(std::function<void(std::string)> cb);
 
   static constexpr size_t BUFFER_SIZE = 64;
   static constexpr size_t TELEGRAM_SIZE = 368;
 
 private:
   void runLoop();
-  enum class ErrorAction { NONE, RECONNECT, SHUTDOWN };
-  Meter::ErrorAction handleResult(std::expected<void, MeterError> &&result);
+  MeterTypes::ErrorAction
+  handleResult(std::expected<void, MeterError> &&result);
   void disconnect(void);
   std::expected<void, MeterError> updateValuesAndJson(void);
   std::expected<void, MeterError> updateDeviceAndJson(void);
@@ -50,11 +50,9 @@ private:
   int serialPort_{-1};
 
   // --- threading / callbacks ---
-  std::function<void(const std::string &, const MeterTypes::Values &)>
-      updateCallback_;
-  std::function<void(const std::string &, const MeterTypes::Device &)>
-      deviceCallback_;
-  std::function<void(const std::string &)> availabilityCallback_;
+  std::function<void(std::string, MeterTypes::Values)> updateCallback_;
+  std::function<void(std::string, MeterTypes::Device)> deviceCallback_;
+  std::function<void(std::string)> availabilityCallback_;
   SignalHandler &handler_;
   mutable std::mutex cbMutex_;
   std::condition_variable cv_;

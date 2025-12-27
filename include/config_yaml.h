@@ -11,7 +11,7 @@ enum class SerialParity { None, Even, Odd };
 
 // --- Modbus TCP config ---
 struct ModbusTcpConfig {
-  std::string host;
+  std::string listen;
   int port;
 };
 
@@ -21,10 +21,10 @@ struct ModbusRtuConfig {
   int baud;
 };
 
-// --- Response timeout config ---
-struct ResponseTimeoutConfig {
-  int sec{0};
-  int usec{200000};
+// --- Indication timeout config ---
+struct IndicationTimeoutConfig {
+  int sec{10};
+  int usec{0};
 };
 
 // --- Reconnect delay config ---
@@ -53,9 +53,10 @@ struct ModbusRootConfig {
 
   int slaveId{1};
   int timeout{1};
+  bool useFloatModel;
 
   // Optional parameters
-  std::optional<ResponseTimeoutConfig> responseTimeout;
+  std::optional<IndicationTimeoutConfig> indicationTimeout;
 };
 
 // MQTT config

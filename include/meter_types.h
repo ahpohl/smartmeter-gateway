@@ -29,6 +29,8 @@ struct MeterTypes {
     std::string status;
     int phases{0};
   };
+
+  enum class ErrorAction { NONE, RECONNECT, SHUTDOWN };
 };
 
 #endif /* METER_TYPES_H_ */

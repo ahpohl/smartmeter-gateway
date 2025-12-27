@@ -174,10 +174,12 @@ public:
    * @see ModbusError
    */
   template <typename T> static T getOrThrow(std::expected<T, ModbusError> res) {
-    if (res)
-      return *res;
-    else
+    if (!res)
       throw res.error();
+
+    if constexpr (!std::is_void_v<T>) {
+      return *res;
+    }
   }
 
   /**

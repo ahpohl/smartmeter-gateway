@@ -19,8 +19,7 @@ public:
   ~MqttClient();
 
   // Producer pushes JSON payloads here
-  void publishValues(const std::string &payload);
-  void publish(const std::string &payload, const std::string &topic);
+  void publish(std::string payload, const std::string &topic);
 
 private:
   void run();

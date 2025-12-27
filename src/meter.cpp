@@ -52,27 +52,26 @@ void Meter::disconnect(void) {
 }
 
 void Meter::setUpdateCallback(
-    std::function<void(const std::string &, const MeterTypes::Values &)> cb) {
+    std::function<void(std::string, MeterTypes::Values)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
 }
 
 void Meter::setDeviceCallback(
-    std::function<void(const std::string &, const MeterTypes::Device &)> cb) {
+    std::function<void(std::string, MeterTypes::Device)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   deviceCallback_ = std::move(cb);
 }
 
-void Meter::setAvailabilityCallback(
-    std::function<void(const std::string &)> cb) {
+void Meter::setAvailabilityCallback(std::function<void(std::string)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   availabilityCallback_ = std::move(cb);
 }
 
-Meter::ErrorAction
+MeterTypes::ErrorAction
 Meter::handleResult(std::expected<void, MeterError> &&result) {
   if (result) {
-    return Meter::ErrorAction::NONE;
+    return MeterTypes::ErrorAction::NONE;
   }
 
   const MeterError &err = result.error();
@@ -81,22 +80,22 @@ Meter::handleResult(std::expected<void, MeterError> &&result) {
     // Fatal error occurred - initiate shutdown sequence
     meterLogger_->error("FATAL Meter error: {}", err.describe());
     handler_.shutdown();
-    return Meter::ErrorAction::SHUTDOWN;
+    return MeterTypes::ErrorAction::SHUTDOWN;
 
   } else if (err.severity == MeterError::Severity::TRANSIENT) {
     // Temporary error - disconnect and reconnect
     meterLogger_->warn("Transient Meter error: {}", err.describe());
     disconnect();
-    return Meter::ErrorAction::RECONNECT;
+    return MeterTypes::ErrorAction::RECONNECT;
 
   } else if (err.severity == MeterError::Severity::SHUTDOWN) {
     // Shutdown already in progress - just exit cleanly
     meterLogger_->trace("Meter operation cancelled due to shutdown: {}",
                         err.describe());
-    return Meter::ErrorAction::SHUTDOWN;
+    return MeterTypes::ErrorAction::SHUTDOWN;
   }
 
-  return Meter::ErrorAction::NONE;
+  return MeterTypes::ErrorAction::NONE;
 }
 
 std::expected<void, MeterError> Meter::tryConnect(void) {
@@ -469,10 +468,10 @@ void Meter::runLoop() {
 
     // Connect to meter
     auto connectAction = handleResult(tryConnect());
-    if (connectAction == Meter::ErrorAction::SHUTDOWN)
+    if (connectAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
 
-    else if (connectAction == Meter::ErrorAction::RECONNECT) {
+    else if (connectAction == MeterTypes::ErrorAction::RECONNECT) {
       meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
                          reconnectDelay,
                          reconnectDelay == 1 ? "second" : "seconds");
@@ -484,7 +483,7 @@ void Meter::runLoop() {
       if (cfg_.reconnectDelay->exponential && handler_.isRunning())
         reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
-    } else if (connectAction == Meter::ErrorAction::NONE &&
+    } else if (connectAction == MeterTypes::ErrorAction::NONE &&
                cfg_.reconnectDelay->exponential) {
       // Successfully connected - reset reconnect delay
       reconnectDelay = cfg_.reconnectDelay->min;
@@ -492,16 +491,16 @@ void Meter::runLoop() {
 
     // Read telegram - on any error, loop restarts (will try reconnect)
     auto readAction = handleResult(readTelegram());
-    if (readAction == Meter::ErrorAction::SHUTDOWN)
+    if (readAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
-    else if (readAction == Meter::ErrorAction::RECONNECT)
+    else if (readAction == MeterTypes::ErrorAction::RECONNECT)
       continue;
 
     // Update device
     auto deviceAction = handleResult(updateDeviceAndJson());
-    if (deviceAction == Meter::ErrorAction::SHUTDOWN)
+    if (deviceAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
-    else if (deviceAction == Meter::ErrorAction::RECONNECT)
+    else if (deviceAction == MeterTypes::ErrorAction::RECONNECT)
       continue;
 
     if (handler_.isRunning()) {
@@ -513,9 +512,9 @@ void Meter::runLoop() {
 
     // Update values
     auto updateAction = handleResult(updateValuesAndJson());
-    if (updateAction == Meter::ErrorAction::SHUTDOWN)
+    if (updateAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
-    else if (updateAction == Meter::ErrorAction::RECONNECT)
+    else if (updateAction == MeterTypes::ErrorAction::RECONNECT)
       continue;
 
     if (handler_.isRunning()) {

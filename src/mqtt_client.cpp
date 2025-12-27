@@ -81,7 +81,7 @@ bool MqttClient::hasQueuedMessages() const {
                      [](const auto &p) { return !p.second.empty(); });
 }
 
-void MqttClient::publish(const std::string &payload, const std::string &topic) {
+void MqttClient::publish(std::string payload, const std::string &topic) {
   std::unique_lock<std::mutex> lock(mutex_);
 
   // Duplicate suppression per topic

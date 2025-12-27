@@ -64,16 +64,18 @@ int main(int argc, char *argv[]) {
   Meter meter(cfg.meter, handler);
 
   // --- Setup callbacks
-  meter.setUpdateCallback([&mqtt, &cfg](const std::string &jsonDump,
-                                        const MeterTypes::Values &values) {
-    mqtt.publish(jsonDump, cfg.mqtt.topic + "/values");
-  });
-  meter.setDeviceCallback([&mqtt, &cfg](const std::string &jsonDump,
-                                        const MeterTypes::Device &device) {
-    mqtt.publish(jsonDump, cfg.mqtt.topic + "/device");
-  });
-  meter.setAvailabilityCallback([&mqtt, &cfg](const std::string &availability) {
-    mqtt.publish(availability, cfg.mqtt.topic + "/availability");
+  meter.setUpdateCallback(
+      [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Values values) {
+        mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/values");
+        slave.updateValues(std::move(values));
+      });
+  meter.setDeviceCallback(
+      [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Device device) {
+        mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/device");
+        slave.updateDevice(std::move(device));
+      });
+  meter.setAvailabilityCallback([&mqtt, &cfg](std::string availability) {
+    mqtt.publish(std::move(availability), cfg.mqtt.topic + "/availability");
   });
 
   // --- Wait for shutdown signal ---

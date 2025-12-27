@@ -17,7 +17,7 @@ static std::optional<ModbusTcpConfig> parseModbusTcp(const YAML::Node &node) {
   if (!node)
     return std::nullopt;
   ModbusTcpConfig tcp;
-  tcp.host = node["host"].as<std::string>("localhost");
+  tcp.listen = node["listen"].as<std::string>("0.0.0.0");
   tcp.port = node["port"].as<int>(502);
 
   if (tcp.port <= 0 || tcp.port > 65535)
@@ -59,22 +59,22 @@ parseReconnectDelay(const YAML::Node &node) {
   return cfg;
 }
 
-static std::optional<ResponseTimeoutConfig>
-parseResponseTimeout(const YAML::Node &node) {
+static std::optional<IndicationTimeoutConfig>
+parseIndicationTimeout(const YAML::Node &node) {
   if (!node)
     return std::nullopt;
 
-  ResponseTimeoutConfig cfg;
-  cfg.sec = node["sec"].as<int>(0);
-  cfg.usec = node["usec"].as<int>(200000);
+  IndicationTimeoutConfig cfg;
+  cfg.sec = node["sec"].as<int>(10);
+  cfg.usec = node["usec"].as<int>(0);
 
-  if (cfg.sec == 0 && cfg.usec == 0) {
-    throw std::invalid_argument(
-        "Both response timeout sec and usec cannot be 0");
+  if (cfg.sec < 0) {
+    throw std::invalid_argument("Indication timeout sec must be positive");
   }
-  if (cfg.sec < 0 || cfg.usec > 999999) {
+
+  if (cfg.usec < 0 || cfg.usec > 999999) {
     throw std::invalid_argument(
-        "Response timeout usec must be in range 0-999999");
+        "Indication timeout usec must be in range 0-999999");
   }
 
   return cfg;
@@ -124,13 +124,19 @@ static ModbusRootConfig parseModbus(const YAML::Node &node) {
   if (cfg.tcp && cfg.rtu)
     cfg.rtu = std::nullopt; // TCP takes priority
 
+  // MANDATORY boolean: use_float_model
+  if (!node["use_float_model"]) {
+    throw std::runtime_error(
+        "Missing mandatory 'modbus.use_float_model' key in config");
+  }
+  cfg.useFloatModel = node["use_float_model"].as<bool>();
+
   // --- Basic parameters ---
   cfg.slaveId = node["slave_id"].as<int>(1);
-  cfg.timeout = node["response_timeout"].as<int>(1);
 
   // --- Optional ---
-  if (node["response_timeout"])
-    cfg.responseTimeout = parseResponseTimeout(node["response_timeout"]);
+  if (node["indication_timeout"])
+    cfg.indicationTimeout = parseIndicationTimeout(node["indication_timeout"]);
 
   // --- Validation ---
   if (cfg.slaveId < 1 || cfg.slaveId > 247)
