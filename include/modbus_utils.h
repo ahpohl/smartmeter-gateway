@@ -1,12 +1,13 @@
 #ifndef MODBUS_UTILS_H_
 #define MODBUS_UTILS_H_
 
-#include "meter_types.h"
 #include "modbus_error.h"
+#include "register_base.h"
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <modbus/modbus.h>
 
 namespace ModbusUtils {
 
@@ -55,6 +56,51 @@ template <typename T> void packToModbus(uint16_t *dest, T value) {
 
     std::reverse(dest, dest + nWords);
   }
+}
+
+inline std::expected<void, ModbusError> floatToModbus(modbus_mapping_t *dest,
+                                                      Register reg, Register sf,
+                                                      float realValue,
+                                                      int decimals) {
+
+  if (!dest) {
+    return std::unexpected(
+        ModbusError::custom(EINVAL, "Null modbus_mapping_t pointer"));
+  }
+  if (!dest->tab_registers) {
+    return std::unexpected(
+        ModbusError::custom(EINVAL, "modbus_mapping_t has null tab_registers"));
+  }
+
+  switch (reg.TYPE) {
+  case Register::Type::INT16: {
+    int16_t value =
+        static_cast<int16_t>(std::round(realValue * std::pow(10, decimals)));
+    packToModbus<int16_t>(&dest->tab_registers[reg.ADDR], value);
+    break;
+  }
+  case Register::Type::UINT32: {
+    uint32_t value =
+        static_cast<uint32_t>(std::round(realValue * std::pow(10, decimals)));
+    packToModbus<uint32_t>(&dest->tab_registers[reg.ADDR], value);
+    break;
+  }
+  case Register::Type::UINT16:
+  case Register::Type::UINT64:
+  case Register::Type::FLOAT:
+  case Register::Type::STRING:
+  case Register::Type::UNKNOWN:
+  default:
+    return std::unexpected(ModbusError::custom(
+        EINVAL,
+        std::format("Unsupported target register type for encoding float: {}",
+                    Register::typeToString(reg.TYPE))));
+  }
+
+  packToModbus<int16_t>(&dest->tab_registers[sf.ADDR],
+                        static_cast<int16_t>(decimals));
+
+  return {};
 }
 
 } // namespace ModbusUtils

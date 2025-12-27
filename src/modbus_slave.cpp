@@ -204,12 +204,25 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     modbus_set_float_abcd(values.energy,
                           &newRegs->tab_registers[M21X::TOTWH_IMP.ADDR]);
   } else {
-    modbusLogger_->warn(
-        "updateValues(): Integer and scale factor registers not supported");
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::PHVPHA, M20X::PPV, values.phase1.voltage, 2));
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::PHVPHB, M20X::PPV, values.phase2.voltage, 2));
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::PHVPHC, M20X::PPV, values.phase3.voltage, 2));
+    handleResult(ModbusUtils::floatToModbus(newRegs.get(), M20X::W, M20X::W_SF,
+                                            values.power, 0));
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::WPHA, M20X::W_SF, values.phase1.power, 0));
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::WPHB, M20X::W_SF, values.phase2.power, 0));
+    handleResult(ModbusUtils::floatToModbus(
+        newRegs.get(), M20X::WPHC, M20X::W_SF, values.phase3.power, 0));
+    handleResult(ModbusUtils::floatToModbus(newRegs.get(), M20X::TOTWH_IMP,
+                                            M20X::TOTWH_SF, values.energy, 1));
   }
-}
 
-regs_.store(newRegs);
+  regs_.store(newRegs);
 }
 
 void ModbusSlave::updateDevice(MeterTypes::Device device) {
