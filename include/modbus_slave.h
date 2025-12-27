@@ -27,6 +27,8 @@ private:
   const ModbusRootConfig &cfg_;
   MeterTypes::ErrorAction
   handleResult(std::expected<void, ModbusError> &&result);
+  std::expected<void, ModbusError> acceptTcpClient(void);
+  std::expected<void, ModbusError> acceptRtuClient(void);
 
   // --- modbus registers and values
   modbus_t *ctx_{nullptr};

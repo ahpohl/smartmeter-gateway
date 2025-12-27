@@ -18,6 +18,9 @@ ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
     modbusLogger_ = spdlog::default_logger();
 
   auto listenAction = handleResult(startListener());
+
+  // Start libmodbus loop thread
+  worker_ = std::thread(&ModbusSlave::runLoop, this);
 }
 
 ModbusSlave::~ModbusSlave() {
@@ -264,12 +267,45 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   regs_.store(newRegs);
 }
 
+std::expected<void, ModbusError> ModbusSlave::acceptTcpClient(void) {
+  if (!handler_.isRunning()) {
+    return std::unexpected(
+        ModbusError::custom(EINTR, "tcpClient(): Shutdown in progress"));
+  }
+
+  uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+  int clientSocket = modbus_tcp_pi_accept(ctx_, &serverSocket_);
+
+  int rc = modbus_receive(ctx_, query);
+  if (rc > 0) {
+    auto regs = regs_.load();
+    if (modbus_reply(ctx_, query, rc, regs.get()) == -1) {
+      close(clientSocket);
+      return std::unexpected(
+          ModbusError::fromErrno("tcpClient(): Modbus reply failed"));
+    }
+  } else if (rc == -1) {
+    close(clientSocket);
+    return std::unexpected(ModbusError::fromErrno(
+        "Connection closed by peer; waiting for new connection..."));
+  }
+
+  close(clientSocket);
+
+  return {};
+}
+
 void ModbusSlave::runLoop() {
 
   while (handler_.isRunning()) {
 
-    std::unique_lock<std::mutex> lock(mbMutex_);
-    cv_.wait(lock, [&] { return !handler_.isRunning(); });
+    if (cfg_.tcp) {
+      auto clientAction = handleResult(acceptTcpClient());
+      if (clientAction == MeterTypes::ErrorAction::SHUTDOWN)
+        break;
+      else if (clientAction == MeterTypes::ErrorAction::RECONNECT)
+        continue;
+    }
   }
 
   modbusLogger_->debug("Modbus run loop stopped.");
