@@ -22,17 +22,20 @@ public:
   static constexpr int MODBUS_REGISTERS = 65535;
 
 private:
-  void runLoop();
-  std::expected<void, ModbusError> startListener(void);
   std::shared_ptr<spdlog::logger> modbusLogger_;
   const ModbusRootConfig &cfg_;
   MeterTypes::ErrorAction
   handleResult(std::expected<void, ModbusError> &&result);
-  void clientWorker(int clientSocket);
-  std::expected<void, ModbusError> rtuModbusMaster(void);
+
+  // RTU and TCP listener and connection handler
+  modbus_t *listenCtx_{nullptr};
+  int serverSocket_{-1};
+  std::expected<void, ModbusError> startListener(void);
+  void rtuClientHandler(void);
+  void tcpClientHandler();
+  void tcpClientWorker(int clientSocket);
 
   // --- modbus registers and values
-  modbus_t *listenCtx_{nullptr};
   std::atomic<std::shared_ptr<modbus_mapping_t>> regs_{nullptr};
   struct ModbusDeleter {
     void operator()(modbus_mapping_t *p) {
@@ -40,9 +43,8 @@ private:
         modbus_mapping_free(p);
     }
   };
-  int serverSocket_{-1};
 
-  // --- threading / callbacks ---
+  // --- signals / threading / callbacks ---
   SignalHandler &handler_;
   mutable std::mutex clientMutex_;
   std::thread worker_;

@@ -24,8 +24,11 @@ ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
 
   auto listenAction = handleResult(startListener());
 
-  // Start libmodbus loop thread
-  worker_ = std::thread(&ModbusSlave::runLoop, this);
+  // Start libmodbus connection thread
+  if (cfg_.tcp)
+    worker_ = std::thread(&ModbusSlave::tcpClientHandler, this);
+  else
+    worker_ = std::thread(&ModbusSlave::rtuClientHandler, this);
 }
 
 ModbusSlave::~ModbusSlave() {
@@ -248,11 +251,11 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   regs_.store(newRegs);
 }
 
-void ModbusSlave::clientWorker(int socket) {
+void ModbusSlave::tcpClientWorker(int socket) {
 
   modbus_t *ctx = modbus_new_tcp(nullptr, 0);
   if (!ctx) {
-    modbusLogger_->error("clientWorker(): Unable to create client context");
+    modbusLogger_->error("tcpClientWorker(): Unable to create client context");
     close(socket);
     return;
   }
@@ -260,7 +263,7 @@ void ModbusSlave::clientWorker(int socket) {
 
   // Set slave/unit ID
   if (modbus_set_slave(ctx, cfg_.slaveId) == -1) {
-    modbusLogger_->error("clientWorker(): Setting slave id '{}' failed",
+    modbusLogger_->error("tcpClientWorker(): Setting slave id '{}' failed",
                          cfg_.slaveId);
     modbus_close(ctx);
     modbus_free(ctx);
@@ -274,11 +277,11 @@ void ModbusSlave::clientWorker(int socket) {
   // Set libmodbus debug - enable only if logger is at trace level
   if (modbusLogger_->level() == spdlog::level::trace) {
     if (modbus_set_debug(ctx, true) == -1) {
-      modbusLogger_->warn("clientWorker(): Unable to set debug flag");
+      modbusLogger_->warn("tcpClientWorker(): Unable to set debug flag");
     }
   }
 
-  modbusLogger_->debug("clientWorker(): client connected (slave_id={}, "
+  modbusLogger_->debug("tcpClientWorker(): client connected (slave_id={}, "
                        "request_timeout={}s, idle_timeout={}s)",
                        cfg_.slaveId, cfg_.requestTimeout, cfg_.idleTimeout);
 
@@ -297,11 +300,11 @@ void ModbusSlave::clientWorker(int socket) {
 
       auto regs = regs_.load();
       if (!regs) {
-        modbusLogger_->error("clientWorker(): no Modbus mapping available");
+        modbusLogger_->error("tcpClientWorker(): no Modbus mapping available");
         break;
       }
       if (modbus_reply(ctx, query, rc, regs.get()) == -1) {
-        modbusLogger_->warn("clientWorker(): Modbus reply failed: {}",
+        modbusLogger_->warn("tcpClientWorker(): Modbus reply failed: {}",
                             modbus_strerror(errno));
         break;
       }
@@ -315,7 +318,7 @@ void ModbusSlave::clientWorker(int socket) {
         auto now = std::chrono::steady_clock::now();
         if (now - lastActivity > idleTimeout) {
           modbusLogger_->info(
-              "clientWorker(): client idle timeout ({}s), disconnecting",
+              "tcpClientWorker(): client idle timeout ({}s), disconnecting",
               cfg_.idleTimeout);
           break;
         }
@@ -329,12 +332,12 @@ void ModbusSlave::clientWorker(int socket) {
         continue;
       }
       // Connection closed or error
-      modbusLogger_->debug("clientWorker(): client disconnected: {}",
+      modbusLogger_->debug("tcpClientWorker(): client disconnected: {}",
                            modbus_strerror(errno));
       break;
     } else if (rc == 0) {
       // Connection closed by client
-      modbusLogger_->debug("clientWorker(): client closed connection");
+      modbusLogger_->debug("tcpClientWorker(): client closed connection");
       break;
     }
   }
@@ -342,15 +345,105 @@ void ModbusSlave::clientWorker(int socket) {
   modbus_close(ctx);
   modbus_free(ctx);
   close(socket);
-
-  modbusLogger_->debug("clientWorker(): client handler exiting");
 }
 
-void ModbusSlave::runLoop() {
+void ModbusSlave::rtuClientHandler() {
 
-  // Check if serverSocket_ is valid before polling
+  // Set slave/unit ID
+  if (modbus_set_slave(listenCtx_, cfg_.slaveId) == -1) {
+    modbusLogger_->error("rtuClientHandler() Setting slave id '{}' failed",
+                         cfg_.slaveId);
+    modbus_close(listenCtx_);
+    modbus_free(listenCtx_);
+    return;
+  }
+
+  // Set request timeout - controls how long modbus_receive() waits per call
+  modbus_set_indication_timeout(listenCtx_, cfg_.requestTimeout, 0);
+
+  // Set libmodbus debug - enable only if logger is at trace level
+  if (modbusLogger_->level() == spdlog::level::trace) {
+    if (modbus_set_debug(listenCtx_, true) == -1) {
+      modbusLogger_->warn("rtuClientHandler() Unable to set debug flag");
+    }
+  }
+
+  modbusLogger_->debug("rtuClientHandler(): listening for requests "
+                       "(slave_id={}, request_timeout={}s, idle_timeout={}s)",
+                       cfg_.slaveId, cfg_.requestTimeout, cfg_.idleTimeout);
+
+  uint8_t query[MODBUS_RTU_MAX_ADU_LENGTH];
+
+  // Track last activity time for idle timeout
+  auto lastActivity = std::chrono::steady_clock::now();
+  auto idleTimeout = std::chrono::seconds(cfg_.idleTimeout);
+
+  while (handler_.isRunning()) {
+    int rc = modbus_receive(listenCtx_, query);
+
+    // --- Valid request received ---
+    if (rc > 0) {
+      lastActivity = std::chrono::steady_clock::now();
+
+      auto regs = regs_.load();
+      if (!regs) {
+        modbusLogger_->error("rtuClientHandler(): no Modbus mapping available");
+        handler_.shutdown();
+        break;
+      }
+
+      if (modbus_reply(listenCtx_, query, rc, regs.get()) == -1) {
+        modbusLogger_->warn("rtuClientHandler(): reply failed: {}",
+                            modbus_strerror(errno));
+      }
+      continue;
+    }
+
+    // --- Ignored frame (wrong slave ID, CRC error filtered by libmodbus) ---
+    if (rc == 0) {
+      continue;
+    }
+
+    // --- Error handling (rc == -1) ---
+
+    // Timeout - expected, check idle and continue
+    if (errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK) {
+      auto now = std::chrono::steady_clock::now();
+      if (now - lastActivity > idleTimeout) {
+        modbusLogger_->debug("rtuClientHandler(): idle for {}s",
+                             cfg_.idleTimeout);
+        lastActivity = now;
+      }
+      continue;
+    }
+
+    // Interrupted by signal - check shutdown flag
+    if (errno == EINTR) {
+      continue; // isRunning() checked at loop start
+    }
+
+    // Fatal serial errors - cannot recover
+    if (errno == EBADF || errno == EIO) {
+      modbusLogger_->error("rtuClientHandler(): fatal serial error:  {}",
+                           modbus_strerror(errno));
+      handler_.shutdown();
+      break;
+    }
+
+    // Other errors - log and try to continue
+    modbusLogger_->warn("rtuClientHandler(): receive error: {}",
+                        modbus_strerror(errno));
+  }
+
+  modbusLogger_->debug("Modbus RTU slave run loop stopped");
+}
+
+void ModbusSlave::tcpClientHandler(void) {
+
+  // TCP mode - accept connections and spawn client threads
   if (serverSocket_ == -1) {
-    modbusLogger_->error("runLoop(): server socket is invalid, cannot start");
+    modbusLogger_->error(
+        "tcpClientHandler(): server socket is invalid, cannot start");
     handler_.shutdown();
     return;
   }
@@ -369,7 +462,8 @@ void ModbusSlave::runLoop() {
         // Interrupted by signal - check if we should continue
         continue;
       }
-      modbusLogger_->error("runLoop(): poll failed: {}", strerror(errno));
+      modbusLogger_->error("tcpClientHandler(): poll failed: {}",
+                           strerror(errno));
       handler_.shutdown();
       break;
     } else if (ret == 0) {
@@ -391,22 +485,23 @@ void ModbusSlave::runLoop() {
             break;
           continue;
         }
-        modbusLogger_->warn("runLoop(): accept failed: {}", strerror(errno));
+        modbusLogger_->warn("tcpClientHandler(): accept failed: {}",
+                            strerror(errno));
         continue;
       }
-      modbusLogger_->debug("runLoop(): accepted new client");
+      modbusLogger_->debug("tcpClientHandler(): accepted new client");
 
       // spawn a thread to handle the client
       {
         std::lock_guard<std::mutex> lock(clientMutex_);
         clientThreads_.emplace_back(
-            [clientSocket, this]() { clientWorker(clientSocket); });
+            [clientSocket, this]() { tcpClientWorker(clientSocket); });
       }
     }
 
     // Check for socket errors
     if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-      modbusLogger_->error("runLoop(): server socket error");
+      modbusLogger_->error("tcpClientHandler(): server socket error");
       handler_.shutdown();
       break;
     }
@@ -427,5 +522,5 @@ void ModbusSlave::runLoop() {
     clientThreads_.clear();
   }
 
-  modbusLogger_->debug("Modbus slave run loop stopped");
+  modbusLogger_->debug("Modbus TCP slave run loop stopped");
 }
