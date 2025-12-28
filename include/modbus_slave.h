@@ -6,11 +6,11 @@
 #include "modbus_error.h"
 #include "signal_handler.h"
 #include <atomic>
-#include <condition_variable>
 #include <expected>
 #include <memory>
 #include <modbus/modbus.h>
 #include <mutex>
+#include <poll.h>
 #include <thread>
 
 class ModbusSlave {
@@ -27,8 +27,8 @@ private:
   const ModbusRootConfig &cfg_;
   MeterTypes::ErrorAction
   handleResult(std::expected<void, ModbusError> &&result);
-  std::expected<void, ModbusError> acceptTcpClient(void);
-  std::expected<void, ModbusError> acceptRtuClient(void);
+  void clientWorker(int clientSocket);
+  std::expected<void, ModbusError> rtuModbusMaster(void);
 
   // --- modbus registers and values
   modbus_t *ctx_{nullptr};
@@ -45,7 +45,9 @@ private:
   SignalHandler &handler_;
   mutable std::mutex mbMutex_;
   std::thread worker_;
-  std::condition_variable cv_;
+  std::vector<std::thread> clientThreads_;
+  int sfd_{-1};
+  struct pollfd fds_[2];
 };
 
 #endif /* MODBUS_SLAVE_H_ */
