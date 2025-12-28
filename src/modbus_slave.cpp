@@ -52,8 +52,8 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
         modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{}));
 
     if (!regs_.load()) {
-      return std::unexpected(ModbusError::fromErrno(
-          "startListener(): Unable to allocate new Modbus mapping"));
+      return std::unexpected(
+          ModbusError::fromErrno("Unable to allocate new Modbus mapping"));
     }
   }
 
@@ -85,9 +85,9 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
         modbus_new_rtu(opt_c_str(cfg_.rtu->device), cfg_.rtu->baud, 'N', 8, 1);
   }
   if (!listenCtx_) {
-    return std::unexpected(ModbusError::custom(
-        ENOMEM, "startListener(): Unable to create the libmodbus {} context",
-        (cfg_.tcp ? "TCP" : "RTU")));
+    return std::unexpected(
+        ModbusError::custom(ENOMEM, "Unable to create the libmodbus {} context",
+                            (cfg_.tcp ? "TCP" : "RTU")));
   }
 
   // Attempt to start listener
@@ -162,7 +162,7 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   }
 
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
-      modbus_mapping_new(0, 0, 65535, 0), ModbusDeleter{});
+      modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
   if (!newRegs) {
     modbusLogger_->error(
         "updateValues(): Unable to allocate new Modbus mapping");
@@ -188,7 +188,7 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
                           &newRegs->tab_registers[M21X::WPHB.ADDR]);
     modbus_set_float_abcd(values.phase3.power,
                           &newRegs->tab_registers[M21X::WPHC.ADDR]);
-    modbus_set_float_abcd(values.energy,
+    modbus_set_float_abcd(values.energy * 1e3,
                           &newRegs->tab_registers[M21X::TOTWH_IMP.ADDR]);
   } else {
     handleResult(ModbusUtils::floatToModbus(
@@ -206,7 +206,8 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     handleResult(ModbusUtils::floatToModbus(
         newRegs.get(), M20X::WPHC, M20X::W_SF, values.phase3.power, 0));
     handleResult(ModbusUtils::floatToModbus(newRegs.get(), M20X::TOTWH_IMP,
-                                            M20X::TOTWH_SF, values.energy, 1));
+                                            M20X::TOTWH_SF, values.energy * 1e3,
+                                            1));
   }
 
   regs_.store(newRegs);
@@ -227,7 +228,7 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   }
 
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
-      modbus_mapping_new(0, 0, 65535, 0), ModbusDeleter{});
+      modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
   if (!newRegs) {
     modbusLogger_->error(
         "updateDevice(): Unable to allocate new Modbus mapping");
@@ -237,7 +238,7 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
 
   // Copy entire register block from old to new (fast)
   std::memcpy(newRegs->tab_registers, oldRegs->tab_registers,
-              static_cast<size_t>(65535) * sizeof(uint16_t));
+              static_cast<size_t>(MODBUS_REGISTERS) * sizeof(uint16_t));
 
   handleResult(ModbusUtils::stringToModbus(
       &newRegs->tab_registers[C001::MN.ADDR], device.manufacturer));
@@ -489,7 +490,6 @@ void ModbusSlave::tcpClientHandler(void) {
                             strerror(errno));
         continue;
       }
-      modbusLogger_->debug("tcpClientHandler(): accepted new client");
 
       // spawn a thread to handle the client
       {
