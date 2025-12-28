@@ -219,6 +219,9 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
     return;
   }
 
+  if (deviceUpdated_)
+    return;
+
   // Snapshot current mapping
   auto oldRegs = regs_.load();
   if (!oldRegs) {
@@ -248,6 +251,8 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
       &newRegs->tab_registers[C001::VR.ADDR], device.fwVersion));
   handleResult(ModbusUtils::stringToModbus(
       &newRegs->tab_registers[C001::SN.ADDR], device.serialNumber));
+
+  modbusLogger_->trace("fwVersion {}", device.fwVersion);
 
   regs_.store(newRegs);
 }

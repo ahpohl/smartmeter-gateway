@@ -38,5 +38,5 @@ logger:
   modules:
     main: info
     meter: info
-    modbus: debug
+    modbus: trace
     mqtt: info
