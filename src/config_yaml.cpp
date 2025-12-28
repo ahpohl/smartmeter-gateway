@@ -59,27 +59,6 @@ parseReconnectDelay(const YAML::Node &node) {
   return cfg;
 }
 
-static std::optional<IndicationTimeoutConfig>
-parseIndicationTimeout(const YAML::Node &node) {
-  if (!node)
-    return std::nullopt;
-
-  IndicationTimeoutConfig cfg;
-  cfg.sec = node["sec"].as<int>(10);
-  cfg.usec = node["usec"].as<int>(0);
-
-  if (cfg.sec < 0) {
-    throw std::invalid_argument("Indication timeout sec must be positive");
-  }
-
-  if (cfg.usec < 0 || cfg.usec > 999999) {
-    throw std::invalid_argument(
-        "Indication timeout usec must be in range 0-999999");
-  }
-
-  return cfg;
-}
-
 static MeterConfig parseMeter(const YAML::Node &node) {
   if (!node)
     throw std::runtime_error("Missing 'meter' section in config");
@@ -133,14 +112,22 @@ static ModbusRootConfig parseModbus(const YAML::Node &node) {
 
   // --- Basic parameters ---
   cfg.slaveId = node["slave_id"].as<int>(1);
-
-  // --- Optional ---
-  if (node["indication_timeout"])
-    cfg.indicationTimeout = parseIndicationTimeout(node["indication_timeout"]);
+  cfg.requestTimeout = node["request_timeout"].as<int>(5);
+  cfg.idleTimeout = node["idle_timeout"].as<int>(60);
 
   // --- Validation ---
   if (cfg.slaveId < 1 || cfg.slaveId > 247)
-    throw std::invalid_argument("Modbus slave_id must be in range 1–247");
+    throw std::invalid_argument("modbus.slave_id must be in range 1–247");
+
+  if (cfg.requestTimeout <= 0)
+    throw std::invalid_argument("modbus.request_timeout must be positive");
+
+  if (cfg.idleTimeout <= 0)
+    throw std::invalid_argument("modbus.idle_timeout must be positive");
+
+  if (cfg.idleTimeout < cfg.requestTimeout)
+    throw std::invalid_argument(
+        "modbus.idle_timeout must be >= request_timeout");
 
   return cfg;
 }

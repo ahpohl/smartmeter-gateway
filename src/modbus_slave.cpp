@@ -5,13 +5,13 @@
 #include "modbus_utils.h"
 #include "signal_handler.h"
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <expected>
 #include <memory>
 #include <modbus/modbus.h>
 #include <poll.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <unistd.h>
 
 ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
@@ -248,15 +248,15 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   regs_.store(newRegs);
 }
 
-void ModbusSlave::clientWorker(int clientSocket) {
+void ModbusSlave::clientWorker(int socket) {
 
   modbus_t *ctx = modbus_new_tcp(nullptr, 0);
   if (!ctx) {
     modbusLogger_->error("clientWorker(): Unable to create client context");
-    close(clientSocket);
+    close(socket);
     return;
   }
-  modbus_set_socket(ctx, clientSocket);
+  modbus_set_socket(ctx, socket);
 
   // Set slave/unit ID
   if (modbus_set_slave(ctx, cfg_.slaveId) == -1) {
@@ -264,32 +264,37 @@ void ModbusSlave::clientWorker(int clientSocket) {
                          cfg_.slaveId);
     modbus_close(ctx);
     modbus_free(ctx);
-    close(clientSocket);
+    close(socket);
     return;
   }
 
-  // set indication timeout
-  modbus_set_indication_timeout(ctx, cfg_.indicationTimeout->sec,
-                                cfg_.indicationTimeout->usec);
+  // Set request timeout - controls how long modbus_receive() waits per call
+  modbus_set_indication_timeout(ctx, cfg_.requestTimeout, 0);
 
-  // Set libmodbus debug
-  // Enable debug only if logger is at trace level
+  // Set libmodbus debug - enable only if logger is at trace level
   if (modbusLogger_->level() == spdlog::level::trace) {
     if (modbus_set_debug(ctx, true) == -1) {
-      modbusLogger_->error(
-          "startListener(): Unable to set the libmodbus debug flag");
-      modbus_close(ctx);
-      modbus_free(ctx);
-      close(clientSocket);
-      return;
+      modbusLogger_->warn("clientWorker(): Unable to set debug flag");
     }
   }
 
+  modbusLogger_->debug("clientWorker(): client connected (slave_id={}, "
+                       "request_timeout={}s, idle_timeout={}s)",
+                       cfg_.slaveId, cfg_.requestTimeout, cfg_.idleTimeout);
+
   uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+
+  // Track last activity time for idle timeout
+  auto lastActivity = std::chrono::steady_clock::now();
+  auto idleTimeout = std::chrono::seconds(cfg_.idleTimeout);
 
   while (handler_.isRunning()) {
     int rc = modbus_receive(ctx, query);
+
     if (rc > 0) {
+      // Valid request received - update activity timestamp
+      lastActivity = std::chrono::steady_clock::now();
+
       auto regs = regs_.load();
       if (!regs) {
         modbusLogger_->error("clientWorker(): no Modbus mapping available");
@@ -302,9 +307,19 @@ void ModbusSlave::clientWorker(int clientSocket) {
       }
     } else if (rc == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
-        // Timeout - check if we should continue running
+        // Request timeout - check if we should continue running
         if (!handler_.isRunning())
           break;
+
+        // Check idle timeout
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastActivity > idleTimeout) {
+          modbusLogger_->info(
+              "clientWorker(): client idle timeout ({}s), disconnecting",
+              cfg_.idleTimeout);
+          break;
+        }
+
         continue;
       }
       if (errno == EINTR) {
@@ -314,7 +329,8 @@ void ModbusSlave::clientWorker(int clientSocket) {
         continue;
       }
       // Connection closed or error
-      modbusLogger_->debug("clientWorker(): client disconnected");
+      modbusLogger_->debug("clientWorker(): client disconnected: {}",
+                           modbus_strerror(errno));
       break;
     } else if (rc == 0) {
       // Connection closed by client
@@ -325,7 +341,9 @@ void ModbusSlave::clientWorker(int clientSocket) {
 
   modbus_close(ctx);
   modbus_free(ctx);
-  close(clientSocket);
+  close(socket);
+
+  modbusLogger_->debug("clientWorker(): client handler exiting");
 }
 
 void ModbusSlave::runLoop() {

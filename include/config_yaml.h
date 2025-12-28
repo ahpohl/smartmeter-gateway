@@ -21,17 +21,11 @@ struct ModbusRtuConfig {
   int baud;
 };
 
-// --- Indication timeout config ---
-struct IndicationTimeoutConfig {
-  int sec{10};
-  int usec{0};
-};
-
 // --- Reconnect delay config ---
 struct ReconnectDelayConfig {
-  int min{5};
-  int max{320};
-  bool exponential{true};
+  int min;
+  int max;
+  bool exponential;
 };
 
 // Meter config
@@ -52,11 +46,9 @@ struct ModbusRootConfig {
   std::optional<ModbusRtuConfig> rtu;
 
   int slaveId{1};
-  int timeout{1};
+  int requestTimeout;
+  int idleTimeout;
   bool useFloatModel;
-
-  // Optional parameters
-  std::optional<IndicationTimeoutConfig> indicationTimeout;
 };
 
 // MQTT config
