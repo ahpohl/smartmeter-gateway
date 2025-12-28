@@ -19,6 +19,7 @@ public:
   virtual ~ModbusSlave();
   void updateValues(MeterTypes::Values values);
   void updateDevice(MeterTypes::Device device);
+  static constexpr int MODBUS_REGISTERS = 65535;
 
 private:
   void runLoop();
@@ -31,7 +32,7 @@ private:
   std::expected<void, ModbusError> rtuModbusMaster(void);
 
   // --- modbus registers and values
-  modbus_t *ctx_{nullptr};
+  modbus_t *listenCtx_{nullptr};
   std::atomic<std::shared_ptr<modbus_mapping_t>> regs_{nullptr};
   struct ModbusDeleter {
     void operator()(modbus_mapping_t *p) {
@@ -43,11 +44,9 @@ private:
 
   // --- threading / callbacks ---
   SignalHandler &handler_;
-  mutable std::mutex mbMutex_;
+  mutable std::mutex clientMutex_;
   std::thread worker_;
   std::vector<std::thread> clientThreads_;
-  int sfd_{-1};
-  struct pollfd fds_[2];
 };
 
 #endif /* MODBUS_SLAVE_H_ */

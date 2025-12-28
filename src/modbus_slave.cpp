@@ -5,12 +5,11 @@
 #include "modbus_utils.h"
 #include "signal_handler.h"
 #include <atomic>
-#include <csignal>
+#include <cstring>
 #include <expected>
 #include <memory>
 #include <modbus/modbus.h>
 #include <poll.h>
-#include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -38,40 +37,16 @@ ModbusSlave::~ModbusSlave() {
     modbusLogger_->info("Stopped Modbus {} listener",
                         (cfg_.tcp ? "TCP" : "RTU"));
   }
-  if (ctx_)
-    modbus_free(ctx_);
+  if (listenCtx_)
+    modbus_free(listenCtx_);
 }
 
 std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
-  // setup signal fd
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-
-  // Block the signals so they are delivered to signalfd (and not to default
-  // handlers)
-  if (pthread_sigmask(SIG_BLOCK, &mask, nullptr) != 0) {
-    return std::unexpected(
-        ModbusError::custom(EINVAL, "startListener: pthread_sigmask"));
-  }
-
-  sfd_ = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
-  if (sfd_ < 0) {
-    return std::unexpected(
-        ModbusError::custom(EINVAL, "startListener(): signalfd"));
-  }
-
-  fds_[0].fd = serverSocket_;
-  fds_[0].events = POLLIN;
-  fds_[1].fd = sfd_;
-  fds_[1].events = POLLIN;
-
   // --- Create register mapping ---
   if (!regs_.load()) {
     regs_.store(std::shared_ptr<modbus_mapping_t>(
-        modbus_mapping_new(0, 0, 65535, 0), ModbusDeleter{}));
+        modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{}));
 
     if (!regs_.load()) {
       return std::unexpected(ModbusError::fromErrno(
@@ -100,39 +75,16 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
   // Create new context based on config
   if (cfg_.tcp) {
-    ctx_ = modbus_new_tcp_pi(opt_c_str(cfg_.tcp->listen),
-                             opt_c_str(std::to_string(cfg_.tcp->port)));
+    listenCtx_ = modbus_new_tcp_pi(opt_c_str(cfg_.tcp->listen),
+                                   opt_c_str(std::to_string(cfg_.tcp->port)));
   } else {
-    ctx_ =
+    listenCtx_ =
         modbus_new_rtu(opt_c_str(cfg_.rtu->device), cfg_.rtu->baud, 'N', 8, 1);
   }
-  if (!ctx_) {
+  if (!listenCtx_) {
     return std::unexpected(ModbusError::custom(
         ENOMEM, "startListener(): Unable to create the libmodbus {} context",
         (cfg_.tcp ? "TCP" : "RTU")));
-  }
-
-  // Set slave/unit ID
-  if (modbus_set_slave(ctx_, cfg_.slaveId) == -1) {
-    modbus_free(ctx_);
-    ctx_ = nullptr;
-    return std::unexpected(ModbusError::fromErrno(
-        "startListener(): Setting slave id '{}' failed", cfg_.slaveId));
-  }
-
-  // set indication timeout
-  modbus_set_indication_timeout(ctx_, cfg_.indicationTimeout->sec,
-                                cfg_.indicationTimeout->usec);
-
-  // Set libmodbus debug
-  // Enable debug only if logger is at trace level
-  if (modbusLogger_->level() == spdlog::level::trace) {
-    if (modbus_set_debug(ctx_, true) == -1) {
-      modbus_free(ctx_);
-      ctx_ = nullptr;
-      return std::unexpected(ModbusError::fromErrno(
-          "startListener(): Unable to set the libmodbus debug flag"));
-    }
   }
 
   // Attempt to start listener
@@ -143,17 +95,17 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
   int rc;
   if (cfg_.tcp) {
-    rc = modbus_tcp_pi_listen(ctx_, 16);
+    rc = modbus_tcp_pi_listen(listenCtx_, 16);
     if (rc != -1) {
       serverSocket_ = rc; // Store the socket on success
     }
   } else {
-    rc = modbus_connect(ctx_);
+    rc = modbus_connect(listenCtx_);
   }
 
   if (rc == -1) {
-    modbus_free(ctx_);
-    ctx_ = nullptr;
+    modbus_free(listenCtx_);
+    listenCtx_ = nullptr;
     return std::unexpected(ModbusError::fromErrno(
         "Failed to start Modbus {} listener on '{}'", mode, endpoint));
   }
@@ -301,53 +253,72 @@ void ModbusSlave::clientWorker(int clientSocket) {
   modbus_t *ctx = modbus_new_tcp(nullptr, 0);
   if (!ctx) {
     modbusLogger_->error("clientWorker(): Unable to create client context");
-    handler_.shutdown();
+    close(clientSocket);
     return;
   }
   modbus_set_socket(ctx, clientSocket);
-  modbus_set_slave(ctx, 1);
 
-  struct timeval tv{};
-  tv.tv_sec = 0;
-  tv.tv_usec = 300;
-  if (setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-    modbusLogger_->error("clientWorker(): Unable to set sockopt SO_RCVTIMEO");
+  // Set slave/unit ID
+  if (modbus_set_slave(ctx, cfg_.slaveId) == -1) {
+    modbusLogger_->error("clientWorker(): Setting slave id '{}' failed",
+                         cfg_.slaveId);
     modbus_close(ctx);
     modbus_free(ctx);
-    handler_.shutdown();
+    close(clientSocket);
     return;
   }
 
-  clientSocket = modbus_tcp_pi_accept(ctx_, &serverSocket_);
+  // set indication timeout
+  modbus_set_indication_timeout(ctx, cfg_.indicationTimeout->sec,
+                                cfg_.indicationTimeout->usec);
+
+  // Set libmodbus debug
+  // Enable debug only if logger is at trace level
+  if (modbusLogger_->level() == spdlog::level::trace) {
+    if (modbus_set_debug(ctx, true) == -1) {
+      modbusLogger_->error(
+          "startListener(): Unable to set the libmodbus debug flag");
+      modbus_close(ctx);
+      modbus_free(ctx);
+      close(clientSocket);
+      return;
+    }
+  }
 
   uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
 
   while (handler_.isRunning()) {
-    int rc = modbus_receive(ctx_, query);
+    int rc = modbus_receive(ctx, query);
     if (rc > 0) {
       auto regs = regs_.load();
       if (!regs) {
         modbusLogger_->error("clientWorker(): no Modbus mapping available");
         break;
       }
-      if (modbus_reply(ctx_, query, rc, regs.get()) == -1) {
-        modbusLogger_->warn("clientWorker(): Modbus reply failed");
+      if (modbus_reply(ctx, query, rc, regs.get()) == -1) {
+        modbusLogger_->warn("clientWorker(): Modbus reply failed: {}",
+                            modbus_strerror(errno));
         break;
       }
     } else if (rc == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
-        modbusLogger_->warn("clientWorker(): timeout");
+        // Timeout - check if we should continue running
         if (!handler_.isRunning())
           break;
         continue;
       }
       if (errno == EINTR) {
-        modbusLogger_->warn("clientWorker(): interrupted by signal");
+        // Interrupted by signal - check if we should continue
         if (!handler_.isRunning())
           break;
         continue;
       }
-      modbusLogger_->warn("clientWorker(): client disconnected");
+      // Connection closed or error
+      modbusLogger_->debug("clientWorker(): client disconnected");
+      break;
+    } else if (rc == 0) {
+      // Connection closed by client
+      modbusLogger_->debug("clientWorker(): client closed connection");
       break;
     }
   }
@@ -359,66 +330,84 @@ void ModbusSlave::clientWorker(int clientSocket) {
 
 void ModbusSlave::runLoop() {
 
+  // Check if serverSocket_ is valid before polling
+  if (serverSocket_ == -1) {
+    modbusLogger_->error("runLoop(): server socket is invalid, cannot start");
+    handler_.shutdown();
+    return;
+  }
+
+  struct pollfd pfd;
+  pfd.fd = serverSocket_;
+  pfd.events = POLLIN;
+
   while (handler_.isRunning()) {
 
-    int ret = poll(fds_, 2, -1);
-    if (ret < 0) {
-      if (errno == EINTR)
-        continue; // interrupted, re-poll
-      modbusLogger_->error("poll");
-      handler_.shutdown();
-      break;
-    }
+    // Use timeout to allow periodic checking of isRunning()
+    int ret = poll(&pfd, 1, 500);
 
-    // Check for signal
-    if (fds_[1].revents & POLLIN) {
-      struct signalfd_siginfo fdsi;
-      ssize_t s = read(sfd_, &fdsi, sizeof(fdsi));
-      if (s != sizeof(fdsi)) {
+    if (ret < 0) {
+      if (errno == EINTR) {
+        // Interrupted by signal - check if we should continue
         continue;
       }
-      if (fdsi.ssi_signo == SIGINT || fdsi.ssi_signo == SIGTERM) {
-        modbusLogger_->debug("Signal received, shutting down...");
-        handler_.shutdown();
-        close(serverSocket_);
-        break;
-      }
+      modbusLogger_->error("runLoop(): poll failed: {}", strerror(errno));
+      handler_.shutdown();
+      break;
+    } else if (ret == 0) {
+      // Timeout - loop back and check isRunning()
+      continue;
     }
 
     // Check for incoming connection
-    if (fds_[0].revents & POLLIN) {
+    if (pfd.revents & POLLIN) {
       struct sockaddr_storage addr;
       socklen_t addrlen = sizeof(addr);
       int clientSocket =
           accept(serverSocket_, (struct sockaddr *)&addr, &addrlen);
+
       if (clientSocket < 0) {
         if (errno == EINTR) {
+          // Interrupted - check if we should continue
+          if (!handler_.isRunning())
+            break;
           continue;
         }
-        modbusLogger_->debug("accepted new client");
+        modbusLogger_->warn("runLoop(): accept failed: {}", strerror(errno));
         continue;
       }
+      modbusLogger_->debug("runLoop(): accepted new client");
 
       // spawn a thread to handle the client
       {
-        std::lock_guard<std::mutex> lock(mbMutex_);
+        std::lock_guard<std::mutex> lock(clientMutex_);
         clientThreads_.emplace_back(
             [clientSocket, this]() { clientWorker(clientSocket); });
       }
     }
+
+    // Check for socket errors
+    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      modbusLogger_->error("runLoop(): server socket error");
+      handler_.shutdown();
+      break;
+    }
   }
-  // Shutdown: join all client threads
+
+  // Shutdown: close server socket to unblock any pending accepts
+  if (serverSocket_ != -1) {
+    shutdown(serverSocket_, SHUT_RDWR);
+  }
+
+  // Join all client threads
   {
-    std::lock_guard<std::mutex> lock(mbMutex_);
+    std::lock_guard<std::mutex> lock(clientMutex_);
     for (auto &t : clientThreads_) {
       if (t.joinable())
         t.join();
     }
     clientThreads_.clear();
   }
-
-  // cleanup
-  close(sfd_);
 
   modbusLogger_->debug("Modbus slave run loop stopped");
 }
