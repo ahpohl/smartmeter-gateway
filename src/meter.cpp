@@ -147,14 +147,18 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
 
   cfmakeraw(&serialPortSettings);
 
+  // Get serial parameters from config
+  auto serialParams = cfg_.getSerialParams();
+
   // set baud (both directions)
-  if (cfsetispeed(&serialPortSettings, B9600) < 0 ||
-      cfsetospeed(&serialPortSettings, B9600) < 0) {
+  speed_t baudSpeed = MeterTypes::baudToSpeed(serialParams.baud);
+  if (cfsetispeed(&serialPortSettings, baudSpeed) < 0 ||
+      cfsetospeed(&serialPortSettings, baudSpeed) < 0) {
     int saved_errno = errno;
     close(serialPort_);
     errno = saved_errno;
-    return std::unexpected(
-        ModbusError::fromErrno("Failed to set serial port speed"));
+    return std::unexpected(ModbusError::fromErrno(
+        "Failed to set serial port speed {} baud", serialParams.baud));
   }
 
   // Base flags: enable receiver, ignore modem control lines
@@ -163,12 +167,30 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   // Clear size/parity/stop/flow flags first to avoid unexpected bits
   serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 
-  // 7 data bits
-  serialPortSettings.c_cflag |= CS7;
+  // Set data bits
+  serialPortSettings.c_cflag |=
+      MeterTypes::dataBitsToFlag(serialParams.dataBits);
 
-  // Even parity: enable PARENB, ensure PARODD cleared
-  serialPortSettings.c_cflag |= PARENB;
-  serialPortSettings.c_cflag &= ~PARODD;
+  // Set parity
+  switch (serialParams.parity) {
+  case SerialParity::Even:
+    serialPortSettings.c_cflag |= PARENB;
+    serialPortSettings.c_cflag &= ~PARODD;
+    break;
+  case SerialParity::Odd:
+    serialPortSettings.c_cflag |= PARENB;
+    serialPortSettings.c_cflag |= PARODD;
+    break;
+  case SerialParity::None:
+  default:
+    // PARENB already cleared above
+    break;
+  }
+
+  // Set stop bits (2 stop bits if stopBits == 2, otherwise 1)
+  if (serialParams.stopBits == 2) {
+    serialPortSettings.c_cflag |= CSTOPB;
+  }
 
   // Non-blocking read:  return immediately with available data (VMIN=0), 0.5s
   // timeout for first byte (VTIME=5)
@@ -186,7 +208,22 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   // flush both directions if desired after applying settings
   tcflush(serialPort_, TCIOFLUSH);
 
-  meterLogger_->info("Meter connected");
+  char parityChar;
+  switch (serialParams.parity) {
+  case SerialParity::Even:
+    parityChar = 'E';
+    break;
+  case SerialParity::Odd:
+    parityChar = 'O';
+    break;
+  default:
+    parityChar = 'N';
+    break;
+  }
+
+  meterLogger_->info("Meter connected ({}{}{}, {} baud)", serialParams.dataBits,
+                     parityChar, serialParams.stopBits, serialParams.baud);
+
   if (availabilityCallback_)
     availabilityCallback_("connected");
 
