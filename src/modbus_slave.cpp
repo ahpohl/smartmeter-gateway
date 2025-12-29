@@ -174,6 +174,9 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   std::memcpy(newRegs->tab_registers, oldRegs->tab_registers,
               static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
+  // Convert energy from kWh (meter) to Wh (Fronius modbus register)
+  values.energy *= 1e3;
+
   if (cfg_.useFloatModel) {
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHA,
                                                   values.phase1.voltage));
@@ -186,29 +189,28 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHA,
                                                   values.phase1.power));
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHB,
-                                                  values.phase1.power));
+                                                  values.phase2.power));
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHC,
-                                                  values.phase1.power));
+                                                  values.phase3.power));
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::TOTWH_IMP, values.energy));
   } else {
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::PHVPHA, M20X::PPV, values.phase1.voltage, 2));
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::PHVPHB, M20X::PPV, values.phase2.voltage, 2));
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::PHVPHC, M20X::PPV, values.phase3.voltage, 2));
-    handleResult(ModbusUtils::floatToModbus(newRegs.get(), M20X::W, M20X::W_SF,
-                                            values.power, 0));
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(newRegs.get(), M20X::W,
+                                               M20X::W_SF, values.power, 0));
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::WPHA, M20X::W_SF, values.phase1.power, 0));
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::WPHB, M20X::W_SF, values.phase2.power, 0));
-    handleResult(ModbusUtils::floatToModbus(
+    handleResult(ModbusUtils::floatToIntSfRegs(
         newRegs.get(), M20X::WPHC, M20X::W_SF, values.phase3.power, 0));
-    handleResult(ModbusUtils::floatToModbus(newRegs.get(), M20X::TOTWH_IMP,
-                                            M20X::TOTWH_SF, values.energy * 1e3,
-                                            1));
+    handleResult(ModbusUtils::floatToIntSfRegs(
+        newRegs.get(), M20X::TOTWH_IMP, M20X::TOTWH_SF, values.energy, 1));
   }
 
   regs_.store(newRegs);
@@ -309,43 +311,50 @@ void ModbusSlave::tcpClientWorker(int socket) {
         modbusLogger_->error("tcpClientWorker(): no Modbus mapping available");
         break;
       }
+
+      auto replyStart = std::chrono::steady_clock::now();
       if (modbus_reply(ctx, query, rc, regs.get()) == -1) {
         modbusLogger_->warn("tcpClientWorker(): Modbus reply failed: {}",
                             modbus_strerror(errno));
         break;
       }
-    } else if (rc == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
-        // Request timeout - check if we should continue running
-        if (!handler_.isRunning())
-          break;
-
-        // Check idle timeout
-        auto now = std::chrono::steady_clock::now();
-        if (now - lastActivity > idleTimeout) {
-          modbusLogger_->info(
-              "tcpClientWorker(): client idle timeout ({}s), disconnecting",
-              cfg_.idleTimeout);
-          break;
-        }
-
-        continue;
+      if (modbusLogger_->level() == spdlog::level::trace) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - replyStart);
+        modbusLogger_->trace("modbus_reply took {} µs", elapsed.count());
       }
-      if (errno == EINTR) {
-        // Interrupted by signal - check if we should continue
-        if (!handler_.isRunning())
-          break;
-        continue;
-      }
-      // Connection closed or error
-      modbusLogger_->debug("tcpClientWorker(): client disconnected: {}",
-                           modbus_strerror(errno));
-      break;
-    } else if (rc == 0) {
-      // Connection closed by client
+      continue;
+    }
+
+    // --- Empty frame (connection closed by client) ---
+    if (rc == 0) {
       modbusLogger_->debug("tcpClientWorker(): client closed connection");
       break;
     }
+
+    // --- Error (rc == -1) ---
+
+    // Timeout errors - check if idle timeout exceeded
+    if (errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK) {
+      auto now = std::chrono::steady_clock::now();
+      if (now - lastActivity > idleTimeout) {
+        modbusLogger_->info(
+            "tcpClientWorker(): client idle timeout ({}s), disconnecting",
+            cfg_.idleTimeout);
+        break;
+      }
+      continue;
+    }
+
+    // Interrupted by signal - check shutdown flag
+    if (errno == EINTR) {
+      continue; // isRunning() checked at loop start
+    }
+
+    // fatal errors - connection issue or protocol error
+    modbusLogger_->debug("tcpClientWorker(): client disconnected: {}",
+                         modbus_strerror(errno));
+    break;
   }
 
   modbus_close(ctx);

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <expected>
 #include <modbus/modbus.h>
+#include <string>
 
 namespace detail {
 
@@ -51,44 +52,52 @@ std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
 
   switch (reg.TYPE) {
   case Register::Type::INT16:
-    dest->tab_registers[reg.ADDR] = static_cast<uint16_t>(value);
+    if constexpr (std::is_integral_v<T>)
+      dest->tab_registers[reg.ADDR] = static_cast<uint16_t>(value);
     break;
   case Register::Type::UINT16:
-    dest->tab_registers[reg.ADDR] = value;
+    if constexpr (std::is_integral_v<T>)
+      dest->tab_registers[reg.ADDR] = value;
     break;
   case Register::Type::UINT32:
-    detail::packInteger<uint32_t>(&dest->tab_registers[reg.ADDR], value);
+    if constexpr (std::is_integral_v<T>)
+      detail::packInteger<uint32_t>(&dest->tab_registers[reg.ADDR], value);
     break;
   case Register::Type::UINT64:
-    detail::packInteger<uint64_t>(&dest->tab_registers[reg.ADDR], value);
+    if constexpr (std::is_integral_v<T>)
+      detail::packInteger<uint64_t>(&dest->tab_registers[reg.ADDR], value);
     break;
   case Register::Type::FLOAT:
-    modbus_set_float_abcd(value, &dest->tab_registers[reg.ADDR]);
+    if constexpr (std::is_floating_point_v<T>)
+      modbus_set_float_abcd(value, &dest->tab_registers[reg.ADDR]);
     break;
   case Register::Type::STRING: {
-    size_t maxLength = reg.NB * 2;
-    if (value.length() > maxLength) {
-      return std::unexpected(ModbusError::custom(
-          EINVAL,
-          "String length {} exceeds maximum {} characters for register {}",
-          value.length(), maxLength, reg.describe()));
-    }
+    if constexpr (std::is_same_v<T, std::string>) {
+      size_t maxLength = reg.NB * 2;
+      if (value.length() > maxLength) {
+        return std::unexpected(ModbusError::custom(
+            EINVAL,
+            "String length {} exceeds maximum {} characters for register {}",
+            value.length(), maxLength, reg.describe()));
+      }
 
-    // Pack string into modbus mapping
-    for (size_t i = 0; i < value.length() / 2; i++) {
-      unsigned char hi = value[2 * i];
-      unsigned char lo = value[2 * i + 1];
-      dest->tab_registers[reg.ADDR + i] = (static_cast<uint16_t>(hi) << 8) | lo;
-    }
-    if (value.length() % 2) {
-      dest->tab_registers[reg.ADDR + value.length() / 2] =
-          (static_cast<uint16_t>(value[value.length() - 1]) << 8);
-    }
+      // Pack string into modbus mapping
+      for (size_t i = 0; i < value.length() / 2; i++) {
+        unsigned char hi = value[2 * i];
+        unsigned char lo = value[2 * i + 1];
+        dest->tab_registers[reg.ADDR + i] =
+            (static_cast<uint16_t>(hi) << 8) | lo;
+      }
+      if (value.length() % 2) {
+        dest->tab_registers[reg.ADDR + value.length() / 2] =
+            (static_cast<uint16_t>(value[value.length() - 1]) << 8);
+      }
 
-    // Zero out remaining registers
-    for (size_t i = (value.length() + 1) / 2; i < static_cast<size_t>(reg.NB);
-         i++) {
-      dest->tab_registers[reg.ADDR + i] = 0;
+      // Zero out remaining registers
+      for (size_t i = (value.length() + 1) / 2; i < static_cast<size_t>(reg.NB);
+           i++) {
+        dest->tab_registers[reg.ADDR + i] = 0;
+      }
     }
     break;
   }
@@ -103,10 +112,9 @@ std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
 }
 
 // --- encode a float value into integer + scale factor registers ---
-inline std::expected<void, ModbusError> floatToModbus(modbus_mapping_t *dest,
-                                                      Register reg, Register sf,
-                                                      float realValue,
-                                                      int decimals) {
+inline std::expected<void, ModbusError>
+floatToIntSfRegs(modbus_mapping_t *dest, Register reg, Register sf,
+                 float realValue, int decimals) {
   if (!dest) {
     return std::unexpected(
         ModbusError::custom(EINVAL, "Null modbus_mapping_t pointer"));
