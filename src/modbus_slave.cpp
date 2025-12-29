@@ -59,8 +59,8 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
   // Fill mapping with static SunSpec meter model
   auto regs = regs_.load();
-  ModbusUtils::packToModbus<uint32_t>(&regs->tab_registers[C001::SID.ADDR],
-                                      0x53756e53);
+  handleResult(
+      ModbusUtils::packToModbus<uint32_t>(regs.get(), C001::SID, 0x53756e53));
   regs->tab_registers[C001::ID.ADDR] = 1;
   regs->tab_registers[C001::L.ADDR] = C001::SIZE;
   regs->tab_registers[C001::DA.ADDR] = cfg_.slaveId;
@@ -71,7 +71,7 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
     regs->tab_registers[M_END::ID.withOffset(M_END::FLOAT_OFFSET).ADDR] =
         0xFFFF;
   } else {
-    regs->tab_registers[M20X::ID.ADDR] = 201;
+    regs->tab_registers[M20X::ID.ADDR] = 203;
     regs->tab_registers[M20X::L.ADDR] = M20X::SIZE;
     regs->tab_registers[M_END::ID.ADDR] = 0xFFFF;
   }
@@ -175,21 +175,22 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
               static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
   if (cfg_.useFloatModel) {
-    modbus_set_float_abcd(values.phase1.voltage,
-                          &newRegs->tab_registers[M21X::PHVPHA.ADDR]);
-    modbus_set_float_abcd(values.phase2.voltage,
-                          &newRegs->tab_registers[M21X::PHVPHB.ADDR]);
-    modbus_set_float_abcd(values.phase3.voltage,
-                          &newRegs->tab_registers[M21X::PHVPHC.ADDR]);
-    modbus_set_float_abcd(values.power, &newRegs->tab_registers[M21X::W.ADDR]);
-    modbus_set_float_abcd(values.phase1.power,
-                          &newRegs->tab_registers[M21X::WPHA.ADDR]);
-    modbus_set_float_abcd(values.phase2.power,
-                          &newRegs->tab_registers[M21X::WPHB.ADDR]);
-    modbus_set_float_abcd(values.phase3.power,
-                          &newRegs->tab_registers[M21X::WPHC.ADDR]);
-    modbus_set_float_abcd(values.energy * 1e3,
-                          &newRegs->tab_registers[M21X::TOTWH_IMP.ADDR]);
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHA,
+                                                  values.phase1.voltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHB,
+                                                  values.phase2.voltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHC,
+                                                  values.phase3.voltage));
+    handleResult(
+        ModbusUtils::packToModbus<float>(newRegs.get(), M21X::W, values.power));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHA,
+                                                  values.phase1.power));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHB,
+                                                  values.phase1.power));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHC,
+                                                  values.phase1.power));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::TOTWH_IMP, values.energy));
   } else {
     handleResult(ModbusUtils::floatToModbus(
         newRegs.get(), M20X::PHVPHA, M20X::PPV, values.phase1.voltage, 2));
@@ -243,18 +244,17 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   std::memcpy(newRegs->tab_registers, oldRegs->tab_registers,
               static_cast<size_t>(MODBUS_REGISTERS) * sizeof(uint16_t));
 
-  handleResult(ModbusUtils::stringToModbus(
-      &newRegs->tab_registers[C001::MN.ADDR], device.manufacturer));
-  handleResult(ModbusUtils::stringToModbus(
-      &newRegs->tab_registers[C001::MD.ADDR], device.model));
-  handleResult(ModbusUtils::stringToModbus(
-      &newRegs->tab_registers[C001::VR.ADDR], device.fwVersion));
-  handleResult(ModbusUtils::stringToModbus(
-      &newRegs->tab_registers[C001::SN.ADDR], device.serialNumber));
-
-  modbusLogger_->trace("fwVersion {}", device.fwVersion);
+  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::MN,
+                                                      device.manufacturer));
+  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::MD,
+                                                      device.model));
+  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::VR,
+                                                      device.fwVersion));
+  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::SN,
+                                                      device.serialNumber));
 
   regs_.store(newRegs);
+  deviceUpdated_ = true;
 }
 
 void ModbusSlave::tcpClientWorker(int socket) {

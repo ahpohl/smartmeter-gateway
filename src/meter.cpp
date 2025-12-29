@@ -435,8 +435,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
 
   newDevice.manufacturer = "EasyMeter";
   newDevice.model = "DD3-BZ06-ETA-ODZ1";
-  newDevice.fwVersion = std::string("smartmeter-gw") + " v" + PROJECT_VERSION +
-                        " (" + GIT_COMMIT_HASH + ")";
+  newDevice.fwVersion = std::string(PROJECT_VERSION) + "-" + GIT_COMMIT_HASH;
   newDevice.phases = 3;
 
   // ---- Build ordered JSON ----

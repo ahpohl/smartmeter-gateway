@@ -43,6 +43,7 @@ private:
         modbus_mapping_free(p);
     }
   };
+  bool deviceUpdated_{false};
 
   // --- signals / threading / callbacks ---
   SignalHandler &handler_;
