@@ -13,6 +13,33 @@ static SerialParity parseParity(const std::string &val) {
   throw std::invalid_argument("meter.parity must be one of: none, even, odd");
 }
 
+static std::optional<MeterPreset> parsePreset(const std::string &val) {
+  if (val == "od_type")
+    return MeterPreset::OdType;
+  if (val == "sd_type")
+    return MeterPreset::SdType;
+  throw std::invalid_argument("meter.preset must be one of: od_type, sd_type");
+}
+
+// Helper function to get preset defaults
+static void applyPresetDefaults(MeterPreset preset, int &baud, int &dataBits,
+                                int &stopBits, SerialParity &parity) {
+  switch (preset) {
+  case MeterPreset::OdType:
+    baud = 9600;
+    dataBits = 7;
+    stopBits = 1;
+    parity = SerialParity::Even;
+    break;
+  case MeterPreset::SdType:
+    baud = 9600;
+    dataBits = 8;
+    stopBits = 1;
+    parity = SerialParity::None;
+    break;
+  }
+}
+
 static std::optional<ModbusTcpConfig> parseModbusTcp(const YAML::Node &node) {
   if (!node)
     return std::nullopt;
@@ -65,24 +92,47 @@ static MeterConfig parseMeter(const YAML::Node &node) {
 
   MeterConfig cfg;
   cfg.device = node["device"].as<std::string>("/dev/ttyUSB0");
-  cfg.baud = node["baud"].as<int>(9600);
-  cfg.dataBits = node["data_bits"].as<int>(7);
-  cfg.stopBits = node["stop_bits"].as<int>(1);
-  cfg.parity = parseParity(node["parity"].as<std::string>("even"));
   cfg.reconnectDelay = node["reconnect_delay"].as<int>(5);
 
-  if (cfg.baud <= 0)
-    throw std::invalid_argument("meter.baud must be positive");
+  // Parse optional preset
+  if (node["preset"]) {
+    cfg.preset = parsePreset(node["preset"].as<std::string>());
+  }
 
-  if (!(cfg.dataBits == 5 || cfg.dataBits == 6 || cfg.dataBits == 7 ||
-        cfg.dataBits == 8))
-    throw std::invalid_argument("meter.data_bits must be one of 5,6,7,8");
+  // Parse optional manual overrides
+  if (node["baud"])
+    cfg.baud = node["baud"].as<int>();
+  if (node["data_bits"])
+    cfg.dataBits = node["data_bits"].as<int>();
+  if (node["stop_bits"])
+    cfg.stopBits = node["stop_bits"].as<int>();
+  if (node["parity"])
+    cfg.parity = parseParity(node["parity"].as<std::string>());
 
-  if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
-    throw std::invalid_argument("meter.stop_bits must be 1 or 2");
-
+  // Validate reconnect delay
   if (cfg.reconnectDelay <= 0)
     throw std::invalid_argument("meter.reconnect_delay must be positive");
+
+  // Validate: either preset or all manual parameters must be provided
+  bool hasManual = cfg.baud.has_value() && cfg.dataBits.has_value() &&
+                   cfg.stopBits.has_value() && cfg.parity.has_value();
+
+  if (!cfg.preset.has_value() && !hasManual) {
+    throw std::invalid_argument(
+        "meter config must specify either 'preset' or all "
+        "of 'baud', 'data_bits', 'stop_bits', 'parity'");
+  }
+
+  // Validate effective values
+  if (cfg.getSerialParams().baud <= 0)
+    throw std::invalid_argument("meter.baud must be positive");
+
+  if (cfg.getSerialParams().dataBits < 5 || cfg.getSerialParams().dataBits > 8)
+    throw std::invalid_argument("meter.data_bits must be between 5 and 8");
+
+  if (!(cfg.getSerialParams().stopBits == 1 ||
+        cfg.getSerialParams().stopBits == 2))
+    throw std::invalid_argument("meter.stop_bits must be 1 or 2");
 
   return cfg;
 }
@@ -210,4 +260,29 @@ Config loadConfig(const std::string &path) {
   cfg.meter = parseMeter(root["meter"]);
 
   return cfg;
+}
+
+// Implementation of MeterConfig helper methods
+
+MeterConfig::SerialParams MeterConfig::getSerialParams() const {
+  // Start with fallback defaults
+  SerialParams params{9600, 7, 1, SerialParity::Even};
+
+  // Apply preset if specified
+  if (preset.has_value()) {
+    applyPresetDefaults(preset.value(), params.baud, params.dataBits,
+                        params.stopBits, params.parity);
+  }
+
+  // Apply manual overrides (these take precedence)
+  if (baud.has_value())
+    params.baud = baud.value();
+  if (dataBits.has_value())
+    params.dataBits = dataBits.value();
+  if (stopBits.has_value())
+    params.stopBits = stopBits.value();
+  if (parity.has_value())
+    params.parity = parity.value();
+
+  return params;
 }

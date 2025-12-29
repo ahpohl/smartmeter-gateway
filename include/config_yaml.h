@@ -6,8 +6,14 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-// --- Meter config ---
+// --- Meter parity config ---
 enum class SerialParity { None, Even, Odd };
+
+// --- Meter preset types ---
+enum class MeterPreset {
+  OdType, // Optical interface: 9600 7E1
+  SdType  // Multi functional interface: 9600 8N1
+};
 
 // --- Modbus TCP config ---
 struct ModbusTcpConfig {
@@ -31,11 +37,27 @@ struct ReconnectDelayConfig {
 // Meter config
 struct MeterConfig {
   std::string device;
-  int baud;
-  int dataBits;
-  int stopBits;
-  SerialParity parity;
   int reconnectDelay;
+
+  // Preset configuration (optional)
+  std::optional<MeterPreset> preset;
+
+  // Manual overrides (optional when preset is used)
+  std::optional<int> baud;
+  std::optional<int> dataBits;
+  std::optional<int> stopBits;
+  std::optional<SerialParity> parity;
+
+  // Resolved serial parameters
+  struct SerialParams {
+    int baud;
+    int dataBits;
+    int stopBits;
+    SerialParity parity;
+  };
+
+  // Get all resolved parameters at once (recommended)
+  SerialParams getSerialParams() const;
 };
 
 // --- Root Modbus config ---

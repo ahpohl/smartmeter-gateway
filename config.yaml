@@ -1,13 +1,11 @@
 meter:
   device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AB65FI6I-if00-port0
-  baud: 9600
-  data_bits: 7
-  stop_bits: 1
-  parity: even   # none | even | odd
-  reconnect_delay:
-    min: 5
-    max: 320
-    exponential: true
+  preset: od_type
+  #baud: 9600
+  #data_bits: 7
+  #stop_bits: 1
+  #parity: even   # none | even | odd
+  reconnect_delay: 5
 
 modbus:
   tcp:
@@ -18,7 +16,7 @@ modbus:
     baud: 9600
   slave_id: 1
   request_timeout: 5
-  idle_timeout:  60
+  idle_timeout: 60
   use_float_model: false
       
 mqtt:
