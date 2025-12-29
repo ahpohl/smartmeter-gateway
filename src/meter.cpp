@@ -461,7 +461,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
 }
 
 void Meter::runLoop() {
-  int reconnectDelay = cfg_.reconnectDelay->min;
+  int reconnectDelay = cfg_.reconnectDelay;
 
   while (handler_.isRunning()) {
 
@@ -470,7 +470,7 @@ void Meter::runLoop() {
     if (connectAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
 
-    else if (connectAction == MeterTypes::ErrorAction::RECONNECT) {
+    if (connectAction == MeterTypes::ErrorAction::RECONNECT) {
       meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
                          reconnectDelay,
                          reconnectDelay == 1 ? "second" : "seconds");
@@ -479,13 +479,7 @@ void Meter::runLoop() {
         cv_.wait_for(lock, std::chrono::seconds(reconnectDelay),
                      [this] { return !handler_.isRunning(); });
       }
-      if (cfg_.reconnectDelay->exponential && handler_.isRunning())
-        reconnectDelay = std::min(reconnectDelay * 2, cfg_.reconnectDelay->max);
       continue;
-    } else if (connectAction == MeterTypes::ErrorAction::NONE &&
-               cfg_.reconnectDelay->exponential) {
-      // Successfully connected - reset reconnect delay
-      reconnectDelay = cfg_.reconnectDelay->min;
     }
 
     // Read telegram - on any error, loop restarts (will try reconnect)

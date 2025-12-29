@@ -19,7 +19,7 @@ modbus:
   slave_id: 1
   request_timeout: 5
   idle_timeout:  60
-  use_float_model: true
+  use_float_model: false
       
 mqtt:
   broker: geapoh.home.arpa

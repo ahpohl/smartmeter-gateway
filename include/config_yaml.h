@@ -21,7 +21,7 @@ struct ModbusRtuConfig {
   int baud;
 };
 
-// --- Reconnect delay config ---
+// --- MQTT reconnect delay config ---
 struct ReconnectDelayConfig {
   int min;
   int max;
@@ -35,9 +35,7 @@ struct MeterConfig {
   int dataBits;
   int stopBits;
   SerialParity parity;
-
-  // Optional retry parameters
-  std::optional<ReconnectDelayConfig> reconnectDelay;
+  int reconnectDelay;
 };
 
 // --- Root Modbus config ---

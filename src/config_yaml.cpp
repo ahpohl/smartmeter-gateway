@@ -69,10 +69,7 @@ static MeterConfig parseMeter(const YAML::Node &node) {
   cfg.dataBits = node["data_bits"].as<int>(7);
   cfg.stopBits = node["stop_bits"].as<int>(1);
   cfg.parity = parseParity(node["parity"].as<std::string>("even"));
-
-  // --- Optional reconnect delay ---
-  if (node["reconnect_delay"])
-    cfg.reconnectDelay = parseReconnectDelay(node["reconnect_delay"]);
+  cfg.reconnectDelay = node["reconnect_delay"].as<int>(5);
 
   if (cfg.baud <= 0)
     throw std::invalid_argument("meter.baud must be positive");
@@ -83,6 +80,9 @@ static MeterConfig parseMeter(const YAML::Node &node) {
 
   if (!(cfg.stopBits == 1 || cfg.stopBits == 2))
     throw std::invalid_argument("meter.stop_bits must be 1 or 2");
+
+  if (cfg.reconnectDelay <= 0)
+    throw std::invalid_argument("meter.reconnect_delay must be positive");
 
   return cfg;
 }
