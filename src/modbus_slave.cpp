@@ -155,6 +155,8 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     return;
   }
 
+  auto start = std::chrono::steady_clock::now();
+
   // Snapshot current mapping
   auto oldRegs = regs_.load();
   if (!oldRegs) {
@@ -216,6 +218,12 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   }
 
   regs_.store(newRegs);
+
+  if (modbusLogger_->level() == spdlog::level::trace) {
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start);
+    modbusLogger_->trace("updating the values took {} µs", elapsed.count());
+  }
 }
 
 void ModbusSlave::updateDevice(MeterTypes::Device device) {
