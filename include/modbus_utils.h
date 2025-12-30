@@ -69,7 +69,8 @@ std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
     break;
   case Register::Type::FLOAT:
     if constexpr (std::is_floating_point_v<T>)
-      modbus_set_float_abcd(value, &dest->tab_registers[reg.ADDR]);
+      modbus_set_float_abcd(static_cast<float>(value),
+                            &dest->tab_registers[reg.ADDR]);
     break;
   case Register::Type::STRING: {
     if constexpr (std::is_same_v<T, std::string>) {
@@ -111,10 +112,11 @@ std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
   return {};
 }
 
-// --- encode a float value into integer + scale factor registers ---
-inline std::expected<void, ModbusError>
-floatToIntSfRegs(modbus_mapping_t *dest, Register reg, Register sf,
-                 float realValue, int decimals) {
+// --- encode a double value into integer + scale factor registers ---
+inline std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
+                                                     Register reg, Register sf,
+                                                     double realValue,
+                                                     int decimals) {
   if (!dest) {
     return std::unexpected(
         ModbusError::custom(EINVAL, "Null modbus_mapping_t pointer"));
