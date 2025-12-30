@@ -147,18 +147,15 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
 
   cfmakeraw(&serialPortSettings);
 
-  // Get serial parameters from config
-  auto serialParams = cfg_.getSerialParams();
-
   // set baud (both directions)
-  speed_t baudSpeed = MeterTypes::baudToSpeed(serialParams.baud);
+  speed_t baudSpeed = MeterTypes::baudToSpeed(cfg_.baud);
   if (cfsetispeed(&serialPortSettings, baudSpeed) < 0 ||
       cfsetospeed(&serialPortSettings, baudSpeed) < 0) {
     int saved_errno = errno;
     close(serialPort_);
     errno = saved_errno;
     return std::unexpected(ModbusError::fromErrno(
-        "Failed to set serial port speed {} baud", serialParams.baud));
+        "Failed to set serial port speed {} baud", cfg_.baud));
   }
 
   // Base flags: enable receiver, ignore modem control lines
@@ -168,27 +165,26 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 
   // Set data bits
-  serialPortSettings.c_cflag |=
-      MeterTypes::dataBitsToFlag(serialParams.dataBits);
+  serialPortSettings.c_cflag |= MeterTypes::dataBitsToFlag(cfg_.dataBits);
 
   // Set parity
-  switch (serialParams.parity) {
-  case SerialParity::Even:
+  switch (cfg_.parity) {
+  case MeterTypes::Parity::Even:
     serialPortSettings.c_cflag |= PARENB;
     serialPortSettings.c_cflag &= ~PARODD;
     break;
-  case SerialParity::Odd:
+  case MeterTypes::Parity::Odd:
     serialPortSettings.c_cflag |= PARENB;
     serialPortSettings.c_cflag |= PARODD;
     break;
-  case SerialParity::None:
+  case MeterTypes::Parity::None:
   default:
     // PARENB already cleared above
     break;
   }
 
   // Set stop bits (2 stop bits if stopBits == 2, otherwise 1)
-  if (serialParams.stopBits == 2) {
+  if (cfg_.stopBits == 2) {
     serialPortSettings.c_cflag |= CSTOPB;
   }
 
@@ -208,21 +204,9 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   // flush both directions if desired after applying settings
   tcflush(serialPort_, TCIOFLUSH);
 
-  char parityChar;
-  switch (serialParams.parity) {
-  case SerialParity::Even:
-    parityChar = 'E';
-    break;
-  case SerialParity::Odd:
-    parityChar = 'O';
-    break;
-  default:
-    parityChar = 'N';
-    break;
-  }
-
-  meterLogger_->info("Meter connected ({}{}{}, {} baud)", serialParams.dataBits,
-                     parityChar, serialParams.stopBits, serialParams.baud);
+  meterLogger_->info("Meter connected ({}{}{}, {} baud)", cfg_.dataBits,
+                     MeterTypes::parityToChar(cfg_.parity), cfg_.stopBits,
+                     cfg_.baud);
 
   if (availabilityCallback_)
     availabilityCallback_("connected");

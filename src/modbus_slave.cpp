@@ -1,6 +1,7 @@
 #include "modbus_slave.h"
 #include "common_registers.h"
 #include "meter_registers.h"
+#include "meter_types.h"
 #include "modbus_error.h"
 #include "modbus_utils.h"
 #include "signal_handler.h"
@@ -81,8 +82,9 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
     listenCtx_ = modbus_new_tcp_pi(opt_c_str(cfg_.tcp->listen),
                                    opt_c_str(std::to_string(cfg_.tcp->port)));
   } else {
-    listenCtx_ =
-        modbus_new_rtu(opt_c_str(cfg_.rtu->device), cfg_.rtu->baud, 'N', 8, 1);
+    listenCtx_ = modbus_new_rtu(opt_c_str(cfg_.rtu->device), cfg_.rtu->baud,
+                                MeterTypes::parityToChar(cfg_.rtu->parity),
+                                cfg_.rtu->dataBits, cfg_.rtu->stopBits);
   }
   if (!listenCtx_) {
     return std::unexpected(

@@ -1,19 +1,11 @@
 #ifndef CONFIG_YAML_HPP
 #define CONFIG_YAML_HPP
 
+#include "meter_types.h"
 #include <map>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <string>
-
-// --- Meter parity config ---
-enum class SerialParity { None, Even, Odd };
-
-// --- Meter preset types ---
-enum class MeterPreset {
-  OdType, // Optical interface: 9600 7E1
-  SdType  // Multi functional interface: 9600 8N1
-};
 
 // --- Modbus TCP config ---
 struct ModbusTcpConfig {
@@ -25,6 +17,9 @@ struct ModbusTcpConfig {
 struct ModbusRtuConfig {
   std::string device;
   int baud;
+  int dataBits;
+  int stopBits;
+  MeterTypes::Parity parity;
 };
 
 // --- MQTT reconnect delay config ---
@@ -38,26 +33,10 @@ struct ReconnectDelayConfig {
 struct MeterConfig {
   std::string device;
   int reconnectDelay;
-
-  // Preset configuration (optional)
-  std::optional<MeterPreset> preset;
-
-  // Manual overrides (optional when preset is used)
-  std::optional<int> baud;
-  std::optional<int> dataBits;
-  std::optional<int> stopBits;
-  std::optional<SerialParity> parity;
-
-  // Resolved serial parameters
-  struct SerialParams {
-    int baud;
-    int dataBits;
-    int stopBits;
-    SerialParity parity;
-  };
-
-  // Get all resolved parameters at once (recommended)
-  SerialParams getSerialParams() const;
+  int baud;
+  int dataBits;
+  int stopBits;
+  MeterTypes::Parity parity;
 };
 
 // --- Root Modbus config ---

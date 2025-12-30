@@ -2,11 +2,31 @@
 #define METER_TYPES_H_
 
 #include <cstdint>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <termios.h>
 
 struct MeterTypes {
 
+  // --- Serial parity configuration ---
+  enum class Parity { None, Even, Odd };
+
+  // --- Preset types for serial communication ---
+  enum class Preset {
+    OdType, // Optical interface:  9600 7E1
+    SdType  // Multi functional interface: 9600 8N1
+  };
+
+  // --- Resolved serial parameters ---
+  struct SerialParams {
+    int baud{9600};
+    int dataBits{8};
+    int stopBits{1};
+    Parity parity{Parity::None};
+  };
+
+  // --- Meter value types ---
   struct Phase {
     double voltage{0.0};
     double power{0.0};
@@ -33,7 +53,48 @@ struct MeterTypes {
 
   enum class ErrorAction { NONE, RECONNECT, SHUTDOWN };
 
-  // Helper function to convert baud rate integer to termios speed constant
+  // --- Parse functions ---
+  static Parity parseParity(const std::string &val) {
+    if (val == "none")
+      return Parity::None;
+    if (val == "even")
+      return Parity::Even;
+    if (val == "odd")
+      return Parity::Odd;
+    throw std::invalid_argument("parity must be one of: none, even, odd");
+  }
+
+  static std::optional<Preset> parsePreset(const std::string &val) {
+    if (val == "od_type")
+      return Preset::OdType;
+    if (val == "sd_type")
+      return Preset::SdType;
+    throw std::invalid_argument("preset must be one of: od_type, sd_type");
+  }
+
+  // --- Get default parameters for a preset ---
+  static SerialParams getPresetDefaults(Preset preset) {
+    switch (preset) {
+    case Preset::OdType:
+      return {9600, 7, 1, Parity::Even};
+    case Preset::SdType:
+      return {9600, 8, 1, Parity::None};
+    }
+    return {};
+  }
+
+  // --- Conversion helpers ---
+  static char parityToChar(Parity parity) {
+    switch (parity) {
+    case Parity::Even:
+      return 'E';
+    case Parity::Odd:
+      return 'O';
+    default:
+      return 'N';
+    }
+  }
+
   static speed_t baudToSpeed(int baud) {
     switch (baud) {
     case 1200:
@@ -60,7 +121,6 @@ struct MeterTypes {
     }
   }
 
-  // Helper function to convert data bits to termios constant
   static tcflag_t dataBitsToFlag(int dataBits) {
     switch (dataBits) {
     case 5:
@@ -73,6 +133,22 @@ struct MeterTypes {
       return CS8;
     default:
       return CS8;
+    }
+  }
+
+  static void applyParity(termios &tty, Parity parity) {
+    switch (parity) {
+    case Parity::None:
+      tty.c_cflag &= ~PARENB;
+      break;
+    case Parity::Even:
+      tty.c_cflag |= PARENB;
+      tty.c_cflag &= ~PARODD;
+      break;
+    case Parity::Odd:
+      tty.c_cflag |= PARENB;
+      tty.c_cflag |= PARODD;
+      break;
     }
   }
 };
