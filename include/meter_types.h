@@ -29,14 +29,23 @@ struct MeterTypes {
   // --- Meter value types ---
   struct Phase {
     double voltage{0.0};
-    double power{0.0};
+    double current{0.0};
+    double activePower{0.0};
+    double reactivePower{0.0};
+    double apparentPower{0.0};
+    double powerFactor{0.0};
   };
 
   struct Values {
     uint64_t time{0};
     uint64_t activeSensorTime{0};
     double energy{0.0};
-    double power{0.0};
+    double voltage{0.0};
+    double current{0.0};
+    double activePower{0.0};
+    double reactivePower{0.0};
+    double apparentPower{0.0};
+    double powerFactor{0.0};
     Phase phase1;
     Phase phase2;
     Phase phase3;
@@ -45,6 +54,7 @@ struct MeterTypes {
   struct Device {
     std::string manufacturer;
     std::string model;
+    std::string options;
     std::string serialNumber;
     std::string fwVersion;
     std::string status;

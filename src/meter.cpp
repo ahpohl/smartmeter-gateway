@@ -303,7 +303,11 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     iss.str(telegram_);
   }
 
-  std::regex lineRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
+  values.time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch())
+                    .count();
+
+  std::regex obexRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
   std::string line;
 
   int lineNum = 0;
@@ -316,41 +320,40 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
     try {
       std::smatch match;
-      if (std::regex_search(line, match, lineRegex)) {
-        std::string obis = match[1];
-        std::string value_unit = match[2];
-
-        if (obis == "1-0:1.8.0*255") {
-          size_t pos = value_unit.find("*");
-          values.energy = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:16.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.power = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:36.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase1.power = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:56.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase2.power = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:76.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase3.power = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:32.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase1.voltage = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:52.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase2.voltage = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "1-0:72.7.0*255") {
-          size_t pos = value_unit.find("*");
-          values.phase3.voltage = std::stod(value_unit.substr(0, pos));
-        } else if (obis == "0-0:96.8.0*255") {
-          size_t pos = value_unit.find("*");
-          values.activeSensorTime =
-              std::stoul(value_unit.substr(0, pos), nullptr, 16);
-        }
-      } else {
+      if (!std::regex_search(line, match, obexRegex))
         throw std::invalid_argument("Malformed OBEX expression");
+
+      std::string obis = match[1];
+      std::string value_unit = match[2];
+
+      if (obis == "1-0:1.8.0*255") {
+        size_t pos = value_unit.find("*");
+        values.energy = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:16.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.activePower = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:36.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase1.activePower = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:56.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase2.activePower = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:76.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase3.activePower = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:32.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase1.voltage = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:52.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase2.voltage = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "1-0:72.7.0*255") {
+        size_t pos = value_unit.find("*");
+        values.phase3.voltage = std::stod(value_unit.substr(0, pos));
+      } else if (obis == "0-0:96.8.0*255") {
+        size_t pos = value_unit.find("*");
+        values.activeSensorTime =
+            std::stoul(value_unit.substr(0, pos), nullptr, 16);
       }
     } catch (const std::exception &err) {
       std::ostringstream oss;
@@ -359,34 +362,30 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     }
   }
 
-  values.time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
-
   json newJson;
   json phases = json::array();
 
   phases.push_back({
       {"id", 1},
-      {"power", JsonUtils::roundTo(values.phase1.power, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase1.voltage, 2)},
+      {"power", JsonUtils::roundTo(values.phase1.activePower, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase1.voltage, 1)},
   });
 
   phases.push_back({
       {"id", 2},
-      {"power", JsonUtils::roundTo(values.phase2.power, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase2.voltage, 2)},
+      {"power", JsonUtils::roundTo(values.phase2.activePower, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase2.voltage, 1)},
   });
 
   phases.push_back({
       {"id", 3},
-      {"power", JsonUtils::roundTo(values.phase3.power, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase3.voltage, 2)},
+      {"power", JsonUtils::roundTo(values.phase3.activePower, 0)},
+      {"voltage", JsonUtils::roundTo(values.phase3.voltage, 1)},
   });
 
   newJson["time"] = values.time;
   newJson["energy"] = JsonUtils::roundTo(values.energy, 1);
-  newJson["power"] = JsonUtils::roundTo(values.power, 0);
+  newJson["power"] = JsonUtils::roundTo(values.activePower, 0);
   newJson["phases"] = phases;
   newJson["active_time"] = values.activeSensorTime;
 
@@ -422,7 +421,8 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
     iss.str(telegram_);
   }
 
-  std::regex lineRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
+  std::regex obexRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
+  std::regex versionRegex(R"(^(\/[A-Za-z0-9]+)_([A-Za-z0-9]+)$)");
   std::string line;
 
   int lineNum = 0;
@@ -430,21 +430,31 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
     ++lineNum;
     line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
 
-    if (line.empty() || (line.size() && (line[0] == '/' || line[0] == '!')))
+    if (line.empty() || line[0] == '!')
       continue;
 
     try {
-      std::smatch match;
-      if (std::regex_search(line, match, lineRegex)) {
-        std::string obis = match[1];
-
-        if (obis == "1-0:96.1.0*255") {
-          newDevice.serialNumber = match[2];
-        } else if (obis == "1-0:96.5.0*255") {
-          newDevice.status = match[2];
+      // Version line
+      if (!line.empty() && line[0] == '/') {
+        std::smatch versionMatch;
+        if (!std::regex_search(line, versionMatch, versionRegex)) {
+          throw std::invalid_argument("Malformed version expression");
         }
-      } else {
+        newDevice.fwVersion = versionMatch[2].str();
+        continue;
+      }
+
+      // OBEX line
+      std::smatch obexMatch;
+      if (!std::regex_search(line, obexMatch, obexRegex)) {
         throw std::invalid_argument("Malformed OBEX expression");
+      }
+
+      std::string obis = obexMatch[1];
+      if (obis == "1-0:96.1.0*255") {
+        newDevice.serialNumber = obexMatch[2].str();
+      } else if (obis == "1-0:96.5.0*255") {
+        newDevice.status = obexMatch[2].str();
       }
 
     } catch (const std::exception &err) {
@@ -456,7 +466,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
 
   newDevice.manufacturer = "EasyMeter";
   newDevice.model = "DD3-BZ06-ETA-ODZ1";
-  newDevice.fwVersion = std::string(PROJECT_VERSION) + "-" + GIT_COMMIT_HASH;
+  newDevice.options = std::string(PROJECT_VERSION) + "-" + GIT_COMMIT_HASH;
   newDevice.phases = 3;
 
   // ---- Build ordered JSON ----
@@ -466,6 +476,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
   newJson["model"] = newDevice.model;
   newJson["serial_number"] = newDevice.serialNumber;
   newJson["firmware_version"] = newDevice.fwVersion;
+  newJson["options"] = newDevice.options;
   newJson["phases"] = newDevice.phases;
   newJson["status"] = newDevice.status;
 

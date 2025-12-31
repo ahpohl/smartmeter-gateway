@@ -164,8 +164,6 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     return;
   }
 
-  auto start = std::chrono::steady_clock::now();
-
   // Snapshot current mapping
   auto oldRegs = regs_.load();
   if (!oldRegs) {
@@ -208,16 +206,17 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
         newRegs.get(), M21X::PHVPHC.withOffset(ZERO_BASED_INDEX),
         values.phase3.voltage));
     handleResult(ModbusUtils::packToModbus<float>(
-        newRegs.get(), M21X::W.withOffset(ZERO_BASED_INDEX), values.power));
+        newRegs.get(), M21X::W.withOffset(ZERO_BASED_INDEX),
+        values.activePower));
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::WPHA.withOffset(ZERO_BASED_INDEX),
-        values.phase1.power));
+        values.phase1.activePower));
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::WPHB.withOffset(ZERO_BASED_INDEX),
-        values.phase2.power));
+        values.phase2.activePower));
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::WPHC.withOffset(ZERO_BASED_INDEX),
-        values.phase3.power));
+        values.phase3.activePower));
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::TOTWH_IMP.withOffset(ZERO_BASED_INDEX),
         values.energy));
@@ -233,28 +232,22 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
         M20X::V_SF.withOffset(ZERO_BASED_INDEX), values.phase3.voltage, 2));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::W.withOffset(ZERO_BASED_INDEX),
-        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.power, 0));
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::WPHA.withOffset(ZERO_BASED_INDEX),
-        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase1.power, 0));
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase1.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::WPHB.withOffset(ZERO_BASED_INDEX),
-        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase2.power, 0));
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase2.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::WPHC.withOffset(ZERO_BASED_INDEX),
-        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase3.power, 0));
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase3.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::TOTWH_IMP.withOffset(ZERO_BASED_INDEX),
         M20X::TOTWH_SF.withOffset(ZERO_BASED_INDEX), values.energy, 1));
   }
 
   regs_.store(newRegs);
-
-  if (modbusLogger_->level() == spdlog::level::trace) {
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - start);
-    modbusLogger_->trace("updating the values took {} µs", elapsed.count());
-  }
 }
 
 void ModbusSlave::updateDevice(MeterTypes::Device device) {
