@@ -47,10 +47,17 @@ ModbusSlave::~ModbusSlave() {
 
 std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
+  const int NB_REGISTERS =
+      (cfg_.useFloatModel ? M_END::L.withOffset(M_END::FLOAT_OFFSET).ADDR
+                          : M_END::L.ADDR) +
+      ZERO_BASED_INDEX;
+
   // --- Create register mapping ---
   if (!regs_.load()) {
     regs_.store(std::shared_ptr<modbus_mapping_t>(
-        modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{}));
+        modbus_mapping_new_start_address(0, 0, 0, 0, MODBUS_START_REGISTER,
+                                         NB_REGISTERS, 0, 0),
+        ModbusDeleter{}));
 
     if (!regs_.load()) {
       return std::unexpected(
@@ -60,21 +67,23 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
   // Fill mapping with static SunSpec meter model
   auto regs = regs_.load();
-  handleResult(
-      ModbusUtils::packToModbus<uint32_t>(regs.get(), C001::SID, 0x53756e53));
-  regs->tab_registers[C001::ID.ADDR] = 1;
-  regs->tab_registers[C001::L.ADDR] = C001::SIZE;
-  regs->tab_registers[C001::DA.ADDR] = cfg_.slaveId;
+  handleResult(ModbusUtils::packToModbus<uint32_t>(
+      regs.get(), C001::SID.withOffset(ZERO_BASED_INDEX), 0x53756e53));
+  regs->tab_registers[C001::ID.withOffset(ZERO_BASED_INDEX).ADDR] = 1;
+  regs->tab_registers[C001::L.withOffset(ZERO_BASED_INDEX).ADDR] = C001::SIZE;
+  regs->tab_registers[C001::DA.withOffset(ZERO_BASED_INDEX).ADDR] =
+      cfg_.slaveId;
 
   if (cfg_.useFloatModel) {
-    regs->tab_registers[M21X::ID.ADDR] = 213;
-    regs->tab_registers[M21X::L.ADDR] = M21X::SIZE;
-    regs->tab_registers[M_END::ID.withOffset(M_END::FLOAT_OFFSET).ADDR] =
+    regs->tab_registers[M21X::ID.withOffset(ZERO_BASED_INDEX).ADDR] = 213;
+    regs->tab_registers[M21X::L.withOffset(ZERO_BASED_INDEX).ADDR] = M21X::SIZE;
+    regs->tab_registers
+        [M_END::ID.withOffset(ZERO_BASED_INDEX + M_END::FLOAT_OFFSET).ADDR] =
         0xFFFF;
   } else {
-    regs->tab_registers[M20X::ID.ADDR] = 203;
-    regs->tab_registers[M20X::L.ADDR] = M20X::SIZE;
-    regs->tab_registers[M_END::ID.ADDR] = 0xFFFF;
+    regs->tab_registers[M20X::ID.withOffset(ZERO_BASED_INDEX).ADDR] = 203;
+    regs->tab_registers[M20X::L.withOffset(ZERO_BASED_INDEX).ADDR] = M20X::SIZE;
+    regs->tab_registers[M_END::ID.withOffset(ZERO_BASED_INDEX).ADDR] = 0xFFFF;
   }
 
   // Create new context based on config
@@ -165,8 +174,15 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     return;
   }
 
+  const int NB_REGISTERS =
+      (cfg_.useFloatModel ? M_END::L.withOffset(M_END::FLOAT_OFFSET).ADDR
+                          : M_END::L.ADDR) +
+      ZERO_BASED_INDEX;
+
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
-      modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
+      modbus_mapping_new_start_address(0, 0, 0, 0, MODBUS_START_REGISTER,
+                                       NB_REGISTERS, 0, 0),
+      ModbusDeleter{});
   if (!newRegs) {
     modbusLogger_->error(
         "updateValues(): Unable to allocate new Modbus mapping");
@@ -182,39 +198,54 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   values.energy *= 1e3;
 
   if (cfg_.useFloatModel) {
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHA,
-                                                  values.phase1.voltage));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHB,
-                                                  values.phase2.voltage));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHC,
-                                                  values.phase3.voltage));
-    handleResult(
-        ModbusUtils::packToModbus<float>(newRegs.get(), M21X::W, values.power));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHA,
-                                                  values.phase1.power));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHB,
-                                                  values.phase2.power));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHC,
-                                                  values.phase3.power));
     handleResult(ModbusUtils::packToModbus<float>(
-        newRegs.get(), M21X::TOTWH_IMP, values.energy));
+        newRegs.get(), M21X::PHVPHA.withOffset(ZERO_BASED_INDEX),
+        values.phase1.voltage));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::PHVPHB.withOffset(ZERO_BASED_INDEX),
+        values.phase2.voltage));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::PHVPHC.withOffset(ZERO_BASED_INDEX),
+        values.phase3.voltage));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::W.withOffset(ZERO_BASED_INDEX), values.power));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::WPHA.withOffset(ZERO_BASED_INDEX),
+        values.phase1.power));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::WPHB.withOffset(ZERO_BASED_INDEX),
+        values.phase2.power));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::WPHC.withOffset(ZERO_BASED_INDEX),
+        values.phase3.power));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::TOTWH_IMP.withOffset(ZERO_BASED_INDEX),
+        values.energy));
   } else {
     handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHA, M20X::V_SF, values.phase1.voltage, 2));
+        newRegs.get(), M20X::PHVPHA.withOffset(ZERO_BASED_INDEX),
+        M20X::V_SF.withOffset(ZERO_BASED_INDEX), values.phase1.voltage, 2));
     handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHB, M20X::V_SF, values.phase2.voltage, 2));
+        newRegs.get(), M20X::PHVPHB.withOffset(ZERO_BASED_INDEX),
+        M20X::V_SF.withOffset(ZERO_BASED_INDEX), values.phase2.voltage, 2));
     handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHC, M20X::V_SF, values.phase3.voltage, 2));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::W, M20X::W_SF,
-                                           values.power, 0));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::WPHA,
-                                           M20X::W_SF, values.phase1.power, 0));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::WPHB,
-                                           M20X::W_SF, values.phase2.power, 0));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::WPHC,
-                                           M20X::W_SF, values.phase3.power, 0));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOTWH_IMP,
-                                           M20X::TOTWH_SF, values.energy, 1));
+        newRegs.get(), M20X::PHVPHC.withOffset(ZERO_BASED_INDEX),
+        M20X::V_SF.withOffset(ZERO_BASED_INDEX), values.phase3.voltage, 2));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::W.withOffset(ZERO_BASED_INDEX),
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.power, 0));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::WPHA.withOffset(ZERO_BASED_INDEX),
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase1.power, 0));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::WPHB.withOffset(ZERO_BASED_INDEX),
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase2.power, 0));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::WPHC.withOffset(ZERO_BASED_INDEX),
+        M20X::W_SF.withOffset(ZERO_BASED_INDEX), values.phase3.power, 0));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::TOTWH_IMP.withOffset(ZERO_BASED_INDEX),
+        M20X::TOTWH_SF.withOffset(ZERO_BASED_INDEX), values.energy, 1));
   }
 
   regs_.store(newRegs);
@@ -243,8 +274,15 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
     return;
   }
 
+  const int NB_REGISTERS =
+      (cfg_.useFloatModel ? M_END::L.withOffset(M_END::FLOAT_OFFSET).ADDR
+                          : M_END::L.ADDR) +
+      ZERO_BASED_INDEX;
+
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
-      modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
+      modbus_mapping_new_start_address(0, 0, 0, 0, MODBUS_START_REGISTER,
+                                       NB_REGISTERS, 0, 0),
+      ModbusDeleter{});
   if (!newRegs) {
     modbusLogger_->error(
         "updateDevice(): Unable to allocate new Modbus mapping");
@@ -254,16 +292,18 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
 
   // Copy entire register block from old to new (fast)
   std::memcpy(newRegs->tab_registers, oldRegs->tab_registers,
-              static_cast<size_t>(MODBUS_REGISTERS) * sizeof(uint16_t));
+              static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
-  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::MN,
-                                                      device.manufacturer));
-  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::MD,
-                                                      device.model));
-  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::VR,
-                                                      device.fwVersion));
-  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::SN,
-                                                      device.serialNumber));
+  handleResult(ModbusUtils::packToModbus<std::string>(
+      newRegs.get(), C001::MN.withOffset(ZERO_BASED_INDEX),
+      device.manufacturer));
+  handleResult(ModbusUtils::packToModbus<std::string>(
+      newRegs.get(), C001::MD.withOffset(ZERO_BASED_INDEX), device.model));
+  handleResult(ModbusUtils::packToModbus<std::string>(
+      newRegs.get(), C001::VR.withOffset(ZERO_BASED_INDEX), device.fwVersion));
+  handleResult(ModbusUtils::packToModbus<std::string>(
+      newRegs.get(), C001::SN.withOffset(ZERO_BASED_INDEX),
+      device.serialNumber));
 
   regs_.store(newRegs);
   deviceUpdated_ = true;
