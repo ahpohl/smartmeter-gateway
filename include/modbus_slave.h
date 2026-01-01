@@ -19,9 +19,7 @@ public:
   virtual ~ModbusSlave();
   void updateValues(MeterTypes::Values values);
   void updateDevice(MeterTypes::Device device);
-  static constexpr int MODBUS_START_REGISTER = 40000;
-  static constexpr int16_t ZERO_BASED_INDEX =
-      -static_cast<int16_t>(MODBUS_START_REGISTER);
+  static constexpr int MODBUS_REGISTERS = 65535;
 
 private:
   std::shared_ptr<spdlog::logger> modbusLogger_;
