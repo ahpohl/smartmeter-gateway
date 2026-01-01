@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <asm-generic/ioctls.h>
 #include <chrono>
+#include <cmath>
 #include <expected>
 #include <nlohmann/json.hpp>
 #include <regex>
@@ -343,13 +344,13 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
         values.phase3.activePower = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:32.7.0*255") {
         size_t pos = value_unit.find("*");
-        values.phase1.voltage = std::stod(value_unit.substr(0, pos));
+        values.phase1.phVoltage = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:52.7.0*255") {
         size_t pos = value_unit.find("*");
-        values.phase2.voltage = std::stod(value_unit.substr(0, pos));
+        values.phase2.phVoltage = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:72.7.0*255") {
         size_t pos = value_unit.find("*");
-        values.phase3.voltage = std::stod(value_unit.substr(0, pos));
+        values.phase3.phVoltage = std::stod(value_unit.substr(0, pos));
       } else if (obis == "0-0:96.8.0*255") {
         size_t pos = value_unit.find("*");
         values.activeSensorTime =
@@ -362,32 +363,116 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     }
   }
 
+  // power factor and frequency (assumed)
+  values.powerFactor = 0.95;
+  values.frequency = 50.0;
+
+  if (cfg_.grid) {
+    values.powerFactor = cfg_.grid->powerFactor;
+    values.frequency = cfg_.grid->frequency;
+  }
+  values.phase1.powerFactor = values.powerFactor;
+  values.phase2.powerFactor = values.powerFactor;
+  values.phase3.powerFactor = values.powerFactor;
+
+  // apparent power
+  values.apparentPower = values.activePower / values.powerFactor;
+  values.phase1.apparentPower =
+      values.phase1.activePower / values.phase1.powerFactor;
+  values.phase2.apparentPower =
+      values.phase2.activePower / values.phase2.powerFactor;
+  values.phase3.apparentPower =
+      values.phase3.activePower / values.phase3.powerFactor;
+
+  // reactive power
+  values.reactivePower =
+      std::tan(std::acos(values.powerFactor)) * values.activePower;
+  values.phase1.reactivePower = std::tan(std::acos(values.phase1.powerFactor)) *
+                                values.phase1.activePower;
+  values.phase2.reactivePower = std::tan(std::acos(values.phase2.powerFactor)) *
+                                values.phase2.activePower;
+  values.phase3.reactivePower = std::tan(std::acos(values.phase3.powerFactor)) *
+                                values.phase3.activePower;
+
+  // voltages
+  values.phVoltage = (values.phase1.phVoltage + values.phase2.phVoltage +
+                      values.phase3.phVoltage) /
+                     3.0;
+  values.phase1.ppVoltage =
+      std::sqrt(values.phase1.phVoltage * values.phase1.phVoltage +
+                values.phase2.phVoltage * values.phase2.phVoltage +
+                values.phase1.phVoltage * values.phase2.phVoltage);
+  values.phase2.ppVoltage =
+      std::sqrt(values.phase2.phVoltage * values.phase2.phVoltage +
+                values.phase3.phVoltage * values.phase3.phVoltage +
+                values.phase2.phVoltage * values.phase3.phVoltage);
+  values.phase3.ppVoltage =
+      std::sqrt(values.phase3.phVoltage * values.phase3.phVoltage +
+                values.phase1.phVoltage * values.phase1.phVoltage +
+                values.phase3.phVoltage * values.phase1.phVoltage);
+  values.ppVoltage = (values.phase1.ppVoltage + values.phase2.ppVoltage +
+                      values.phase3.ppVoltage) /
+                     3.0;
+
+  // currents
+  values.phase1.current = values.phase1.activePower /
+                          (values.phase1.phVoltage * values.powerFactor);
+  values.phase2.current = values.phase2.activePower /
+                          (values.phase2.phVoltage * values.powerFactor);
+  values.phase3.current = values.phase3.activePower /
+                          (values.phase3.phVoltage * values.powerFactor);
+  values.current =
+      values.phase1.current + values.phase2.current + values.phase3.current;
+
   json newJson;
   json phases = json::array();
 
   phases.push_back({
       {"id", 1},
-      {"power", JsonUtils::roundTo(values.phase1.activePower, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase1.voltage, 1)},
+      {"power_active", JsonUtils::roundTo(values.phase1.activePower, 0)},
+      {"power_apparent", JsonUtils::roundTo(values.phase1.apparentPower, 0)},
+      {"power_reactive", JsonUtils::roundTo(values.phase1.reactivePower, 0)},
+      {"power_factor", JsonUtils::roundTo(values.phase1.powerFactor, 2)},
+      {"voltage_ph", JsonUtils::roundTo(values.phase1.phVoltage, 1)},
+      {"voltage_pp", JsonUtils::roundTo(values.phase1.ppVoltage, 1)},
+      {"current", JsonUtils::roundTo(values.phase1.current, 3)},
+
   });
 
   phases.push_back({
       {"id", 2},
-      {"power", JsonUtils::roundTo(values.phase2.activePower, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase2.voltage, 1)},
+      {"power_active", JsonUtils::roundTo(values.phase2.activePower, 0)},
+      {"power_apparent", JsonUtils::roundTo(values.phase2.apparentPower, 0)},
+      {"power_reactive", JsonUtils::roundTo(values.phase2.reactivePower, 0)},
+      {"power_factor", JsonUtils::roundTo(values.phase2.powerFactor, 2)},
+      {"voltage_ph", JsonUtils::roundTo(values.phase2.phVoltage, 1)},
+      {"voltage_pp", JsonUtils::roundTo(values.phase2.ppVoltage, 1)},
+      {"current", JsonUtils::roundTo(values.phase2.current, 3)},
+
   });
 
   phases.push_back({
       {"id", 3},
-      {"power", JsonUtils::roundTo(values.phase3.activePower, 0)},
-      {"voltage", JsonUtils::roundTo(values.phase3.voltage, 1)},
+      {"power_active", JsonUtils::roundTo(values.phase3.activePower, 0)},
+      {"power_apparent", JsonUtils::roundTo(values.phase3.apparentPower, 0)},
+      {"power_reactive", JsonUtils::roundTo(values.phase3.reactivePower, 0)},
+      {"power_factor", JsonUtils::roundTo(values.phase3.powerFactor, 2)},
+      {"voltage_ph", JsonUtils::roundTo(values.phase3.phVoltage, 1)},
+      {"voltage_pp", JsonUtils::roundTo(values.phase3.ppVoltage, 1)},
+      {"current", JsonUtils::roundTo(values.phase3.current, 3)},
   });
 
   newJson["time"] = values.time;
   newJson["energy"] = JsonUtils::roundTo(values.energy, 1);
-  newJson["power"] = JsonUtils::roundTo(values.activePower, 0);
+  newJson["power_active"] = JsonUtils::roundTo(values.activePower, 0);
+  newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 0);
+  newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 0);
+  newJson["power_factor"] = JsonUtils::roundTo(values.powerFactor, 2);
   newJson["phases"] = phases;
   newJson["active_time"] = values.activeSensorTime;
+  newJson["frequency"] = JsonUtils::roundTo(values.frequency, 2);
+  newJson["voltage_ph"] = JsonUtils::roundTo(values.phVoltage, 1);
+  newJson["voltage_pp"] = JsonUtils::roundTo(values.ppVoltage, 1);
 
   // Update shared values and JSON with lock
   {

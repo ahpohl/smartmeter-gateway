@@ -6,6 +6,10 @@ meter:
   #stop_bits: 1
   #parity: even   # none | even | odd
   reconnect_delay: 5
+grid:
+  power_factor: 0.90
+  frequency: 50.00
+
 
 modbus:
   tcp:

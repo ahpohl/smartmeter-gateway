@@ -29,6 +29,12 @@ struct ReconnectDelayConfig {
   bool exponential;
 };
 
+// --- Grid config ---
+struct GridConfig {
+  double powerFactor;
+  double frequency;
+};
+
 // Meter config
 struct MeterConfig {
   std::string device;
@@ -37,6 +43,7 @@ struct MeterConfig {
   int dataBits;
   int stopBits;
   MeterTypes::Parity parity;
+  std::optional<GridConfig> grid;
 };
 
 // --- Root Modbus config ---

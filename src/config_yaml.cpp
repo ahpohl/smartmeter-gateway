@@ -81,6 +81,24 @@ parseReconnectDelay(const YAML::Node &node) {
   return cfg;
 }
 
+static std::optional<GridConfig> parseGrid(const YAML::Node &node) {
+  if (!node)
+    return std::nullopt;
+
+  GridConfig cfg;
+  cfg.powerFactor = node["power_factor"].as<double>(0.95);
+  cfg.frequency = node["frequency"].as<double>(50.0);
+
+  // Validate
+  if (cfg.powerFactor <= -1.0 || cfg.powerFactor >= 1.0)
+    throw std::invalid_argument(
+        "meter. grid.power_factor must be in range (-1.0, 1.0]");
+  if (cfg.frequency <= 0.0)
+    throw std::invalid_argument("meter.grid.frequency must be positive");
+
+  return cfg;
+}
+
 static MeterConfig parseMeter(const YAML::Node &node) {
   if (!node)
     throw std::runtime_error("Missing 'meter' section in config");
@@ -114,6 +132,10 @@ static MeterConfig parseMeter(const YAML::Node &node) {
     cfg.stopBits = node["stop_bits"].as<int>();
   if (node["parity"])
     cfg.parity = MeterTypes::parseParity(node["parity"].as<std::string>());
+
+  // Parse optional grid parameters
+  if (node["grid"])
+    cfg.grid = parseGrid(node["grid"]);
 
   // Validate
   if (cfg.reconnectDelay <= 0)

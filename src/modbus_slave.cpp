@@ -179,13 +179,24 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   // Convert energy from kWh (meter) to Wh (Fronius modbus register)
   values.energy *= 1e3;
 
+  // Convert power factor into percent (Fronius modbus register)
+  values.powerFactor *= 100.0;
+  values.phase1.powerFactor *= 100.0;
+  values.phase2.powerFactor *= 100.0;
+  values.phase3.powerFactor *= 100.0;
+
   if (cfg_.useFloatModel) {
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHA,
-                                                  values.phase1.voltage));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHB,
-                                                  values.phase2.voltage));
-    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHC,
-                                                  values.phase3.voltage));
+    // power factor
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PF,
+                                                  values.powerFactor));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PFPHA,
+                                                  values.phase1.powerFactor));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PFPHB,
+                                                  values.phase2.powerFactor));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PFPHC,
+                                                  values.phase3.powerFactor));
+
+    // active power
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::W,
                                                   values.activePower));
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHA,
@@ -194,15 +205,75 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
                                                   values.phase2.activePower));
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::WPHC,
                                                   values.phase3.activePower));
+
+    // apparent power
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VA,
+                                                  values.apparentPower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VAPHA,
+                                                  values.phase1.apparentPower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VAPHB,
+                                                  values.phase2.apparentPower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VAPHC,
+                                                  values.phase3.apparentPower));
+
+    // reactive power
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VAR,
+                                                  values.reactivePower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VARPHA,
+                                                  values.phase1.reactivePower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VARPHB,
+                                                  values.phase2.reactivePower));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::VARPHC,
+                                                  values.phase3.reactivePower));
+
+    // phase-to-neutral voltage
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHV,
+                                                  values.phVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHA,
+                                                  values.phase1.phVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHB,
+                                                  values.phase2.phVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PHVPHC,
+                                                  values.phase3.phVoltage));
+
+    // phase-to-phase voltage
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PPV,
+                                                  values.ppVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PPVPHAB,
+                                                  values.phase1.ppVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PPVPHBC,
+                                                  values.phase2.ppVoltage));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::PPVPHCA,
+                                                  values.phase3.ppVoltage));
+
+    // current
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::A,
+                                                  values.current));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::APHA,
+                                                  values.phase1.current));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::APHB,
+                                                  values.phase2.current));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::APHC,
+                                                  values.phase3.current));
+
+    // energy
     handleResult(ModbusUtils::packToModbus<float>(
         newRegs.get(), M21X::TOTWH_IMP, values.energy));
+    handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::FREQ,
+                                                  values.frequency));
+
   } else {
-    handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHA, M20X::V_SF, values.phase1.voltage, 1));
-    handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHB, M20X::V_SF, values.phase2.voltage, 1));
-    handleResult(ModbusUtils::packToModbus(
-        newRegs.get(), M20X::PHVPHC, M20X::V_SF, values.phase3.voltage, 1));
+    // power factor
+    handleResult(
+        ModbusUtils::packToModbus(newRegs.get(), M20X::PF, values.powerFactor));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHA,
+                                           values.phase1.powerFactor));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHB,
+                                           values.phase2.powerFactor));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHC,
+                                           values.phase3.powerFactor));
+
+    // active power
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::W, M20X::W_SF,
                                            values.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
@@ -211,8 +282,68 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
         newRegs.get(), M20X::WPHB, M20X::W_SF, values.phase2.activePower, 0));
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::WPHC, M20X::W_SF, values.phase3.activePower, 0));
+
+    // apparent power
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VA, M20X::VA_SF,
+                                           values.apparentPower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VAPHA,
+                                           M20X::VA_SF,
+                                           values.phase1.apparentPower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VAPHB,
+                                           M20X::VA_SF,
+                                           values.phase2.apparentPower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VAPHC,
+                                           M20X::VA_SF,
+                                           values.phase3.apparentPower, 0));
+
+    // reactive power
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::VAR, M20X::VAR_SF, values.reactivePower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VARPHA,
+                                           M20X::VAR_SF,
+                                           values.phase1.reactivePower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VARPHB,
+                                           M20X::VAR_SF,
+                                           values.phase2.reactivePower, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::VARPHC,
+                                           M20X::VAR_SF,
+                                           values.phase3.reactivePower, 0));
+
+    // phase-to-netral voltage
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PHV, M20X::V_SF,
+                                           values.phVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PHVPHA, M20X::V_SF, values.phase1.phVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PHVPHB, M20X::V_SF, values.phase2.phVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PHVPHC, M20X::V_SF, values.phase3.phVoltage, 1));
+
+    // phase-to-phase voltage
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PPV, M20X::V_SF,
+                                           values.ppVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PPVPHAB, M20X::V_SF, values.phase1.ppVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PPVPHBC, M20X::V_SF, values.phase2.ppVoltage, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PPVPHCA, M20X::V_SF, values.phase3.ppVoltage, 1));
+
+    // current
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::A, M20X::A_SF,
+                                           values.current, 3));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::APHA, M20X::A_SF, values.phase1.current, 3));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::APHB, M20X::A_SF, values.phase2.current, 3));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::APHC, M20X::A_SF, values.phase3.current, 3));
+
+    // energy
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOTWH_IMP,
                                            M20X::TOTWH_SF, values.energy, 1));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::FREQ,
+                                           M20X::FREQ_SF, values.frequency, 2));
   }
 
   regs_.store(newRegs);
