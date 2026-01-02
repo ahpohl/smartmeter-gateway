@@ -77,10 +77,10 @@ struct LoggerConfig {
 
 // Root config
 struct Config {
-  ModbusRootConfig modbus;
+  MeterConfig meter;
   MqttConfig mqtt;
   LoggerConfig logger;
-  MeterConfig meter;
+  std::optional<ModbusRootConfig> modbus;
 };
 
 // Forward declaration

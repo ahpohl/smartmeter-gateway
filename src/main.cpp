@@ -9,6 +9,7 @@
 #include <CLI/CLI.hpp>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -57,8 +58,13 @@ int main(int argc, char *argv[]) {
   // --- Start MQTT consumer ---
   MqttClient mqtt(cfg.mqtt, handler);
 
-  // --- Start Modbus consumer
-  ModbusSlave slave(cfg.modbus, handler);
+  // --- Start Modbus consumer (optional) ---
+  std::unique_ptr<ModbusSlave> slave;
+  if (cfg.modbus) {
+    slave = std::make_unique<ModbusSlave>(cfg.modbus.value(), handler);
+  } else {
+    mainLogger->info("Modbus slave disabled (no modbus section in config)");
+  }
 
   // --- Start meter producer
   Meter meter(cfg.meter, handler);
@@ -67,12 +73,16 @@ int main(int argc, char *argv[]) {
   meter.setUpdateCallback(
       [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Values values) {
         mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/values");
-        slave.updateValues(std::move(values));
+        if (slave) {
+          slave->updateValues(std::move(values));
+        }
       });
   meter.setDeviceCallback(
       [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Device device) {
         mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/device");
-        slave.updateDevice(std::move(device));
+        if (slave) {
+          slave->updateDevice(std::move(device));
+        }
       });
   meter.setAvailabilityCallback([&mqtt, &cfg](std::string availability) {
     mqtt.publish(std::move(availability), cfg.mqtt.topic + "/availability");

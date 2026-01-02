@@ -147,9 +147,9 @@ static MeterConfig parseMeter(const YAML::Node &node) {
   return cfg;
 }
 
-static ModbusRootConfig parseModbus(const YAML::Node &node) {
+static std::optional<ModbusRootConfig> parseModbus(const YAML::Node &node) {
   if (!node)
-    throw std::runtime_error("Missing 'modbus' section in config");
+    return std::nullopt;
 
   ModbusRootConfig cfg;
 
