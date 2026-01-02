@@ -63,6 +63,17 @@ int main(int argc, char *argv[]) {
     mainLogger = spdlog::default_logger();
   mainLogger->info("Starting {} with config '{}'", PROJECT_NAME, config);
 
+  // check privileges
+  if (!Privileges::isRoot() && cfg.modbus->tcp &&
+      (cfg.modbus->tcp->port < 1024)) {
+    mainLogger->error("Modbus TCP port {} requires root privileges, but not "
+                      "running as root",
+                      cfg.modbus->tcp->port);
+    mainLogger->error("Either run as root with --user/--group options, or "
+                      "change Modbus port to >= 1024");
+    return EXIT_FAILURE;
+  }
+
   // --- Setup signals and shutdown
   SignalHandler handler;
 
@@ -83,8 +94,7 @@ int main(int argc, char *argv[]) {
         Privileges::drop(runUser, runGroup);
         mainLogger->info("Dropped privileges to user '{}' group '{}'",
                          Privileges::getCurrentUser(),
-                         runGroup.empty() ? Privileges::getCurrentGroup()
-                                          : runGroup);
+                         Privileges::getCurrentGroup());
       } catch (const std::exception &ex) {
         mainLogger->error("Failed to drop privileges: {}", ex.what());
         return EXIT_FAILURE;
