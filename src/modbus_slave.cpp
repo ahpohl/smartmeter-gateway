@@ -6,6 +6,7 @@
 #include "modbus_utils.h"
 #include "signal_handler.h"
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <expected>
@@ -54,7 +55,7 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 
     if (!regs_.load()) {
       return std::unexpected(
-          ModbusError::fromErrno("Unable to allocate new Modbus mapping"));
+          ModbusError::custom(ENOMEM, "Unable to allocate new Modbus mapping"));
     }
   }
 
@@ -158,17 +159,16 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   // Snapshot current mapping
   auto oldRegs = regs_.load();
   if (!oldRegs) {
-    modbusLogger_->error("updateValues(): No existing mapping to base on");
-    handler_.shutdown();
+    auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+        ENOMEM, "updateValues(): No existing mapping to base on")));
     return;
   }
 
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
       modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
   if (!newRegs) {
-    modbusLogger_->error(
-        "updateValues(): Unable to allocate new Modbus mapping");
-    handler_.shutdown();
+    auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+        ENOMEM, "updateValues(): Unable to allocate new Modbus mapping")));
     return;
   }
 
@@ -361,17 +361,16 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   // Snapshot current mapping
   auto oldRegs = regs_.load();
   if (!oldRegs) {
-    modbusLogger_->error("updateDevice(): No existing mapping to base on");
-    handler_.shutdown();
+    auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+        ENOMEM, "updateValues(): No existing mapping to base on")));
     return;
   }
 
   auto newRegs = std::shared_ptr<modbus_mapping_t>(
       modbus_mapping_new(0, 0, MODBUS_REGISTERS, 0), ModbusDeleter{});
   if (!newRegs) {
-    modbusLogger_->error(
-        "updateDevice(): Unable to allocate new Modbus mapping");
-    handler_.shutdown();
+    auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+        ENOMEM, "updateValues(): Unable to allocate new Modbus mapping")));
     return;
   }
 
@@ -396,19 +395,20 @@ void ModbusSlave::tcpClientWorker(int socket) {
 
   modbus_t *ctx = modbus_new_tcp(nullptr, 0);
   if (!ctx) {
-    modbusLogger_->error("tcpClientWorker(): Unable to create client context");
     close(socket);
+    auto ctxAction = handleResult(std::unexpected(ModbusError::custom(
+        ENOMEM, "tcpClientWorker(): Unable to create client context")));
     return;
   }
   modbus_set_socket(ctx, socket);
 
   // Set slave/unit ID
   if (modbus_set_slave(ctx, cfg_.slaveId) == -1) {
-    modbusLogger_->error("tcpClientWorker(): Setting slave id '{}' failed",
-                         cfg_.slaveId);
     modbus_close(ctx);
     modbus_free(ctx);
     close(socket);
+    auto slaveAction = handleResult(std::unexpected(ModbusError::fromErrno(
+        "tcpClientWorker(): Setting slave id '{}' failed", cfg_.slaveId)));
     return;
   }
 
@@ -441,7 +441,8 @@ void ModbusSlave::tcpClientWorker(int socket) {
 
       auto regs = regs_.load();
       if (!regs) {
-        modbusLogger_->error("tcpClientWorker(): no Modbus mapping available");
+        auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+            ENOMEM, "tcpClientWorker(): no Modbus mapping available")));
         break;
       }
 
@@ -499,10 +500,10 @@ void ModbusSlave::rtuClientHandler() {
 
   // Set slave/unit ID
   if (modbus_set_slave(listenCtx_, cfg_.slaveId) == -1) {
-    modbusLogger_->error("rtuClientHandler() Setting slave id '{}' failed",
-                         cfg_.slaveId);
     modbus_close(listenCtx_);
     modbus_free(listenCtx_);
+    auto slaveAction = handleResult(std::unexpected(ModbusError::fromErrno(
+        "rtuClientWorker(): Setting slave id '{}' failed", cfg_.slaveId)));
     return;
   }
 
@@ -535,8 +536,8 @@ void ModbusSlave::rtuClientHandler() {
 
       auto regs = regs_.load();
       if (!regs) {
-        modbusLogger_->error("rtuClientHandler(): no Modbus mapping available");
-        handler_.shutdown();
+        auto regsAction = handleResult(std::unexpected(ModbusError::custom(
+            ENOMEM, "rtuClientWorker(): no Modbus mapping available")));
         break;
       }
 
@@ -572,9 +573,8 @@ void ModbusSlave::rtuClientHandler() {
 
     // Fatal serial errors - cannot recover
     if (errno == EBADF || errno == EIO) {
-      modbusLogger_->error("rtuClientHandler(): fatal serial error:  {}",
-                           modbus_strerror(errno));
-      handler_.shutdown();
+      auto replyAction = handleResult(std::unexpected(
+          ModbusError::fromErrno("rtuClientHandler(): fatal serial error")));
       break;
     }
 
@@ -590,9 +590,8 @@ void ModbusSlave::tcpClientHandler(void) {
 
   // TCP mode - accept connections and spawn client threads
   if (serverSocket_ == -1) {
-    modbusLogger_->error(
-        "tcpClientHandler(): server socket is invalid, cannot start");
-    handler_.shutdown();
+    auto socketAction = handleResult(std::unexpected(ModbusError::custom(
+        EBADF, "tcpClientHandler(): server socket is invalid, cannot start")));
     return;
   }
 
@@ -610,9 +609,8 @@ void ModbusSlave::tcpClientHandler(void) {
         // Interrupted by signal - check if we should continue
         continue;
       }
-      modbusLogger_->error("tcpClientHandler(): poll failed: {}",
-                           strerror(errno));
-      handler_.shutdown();
+      auto pollAction = handleResult(std::unexpected(
+          ModbusError::fromErrno("tcpClientHandler(): poll failed")));
       break;
     } else if (ret == 0) {
       // Timeout - loop back and check isRunning()
@@ -648,8 +646,8 @@ void ModbusSlave::tcpClientHandler(void) {
 
     // Check for socket errors
     if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-      modbusLogger_->error("tcpClientHandler(): server socket error");
-      handler_.shutdown();
+      auto pfdAction = handleResult(std::unexpected(
+          ModbusError::custom(EIO, "tcpClientHandler(): server socket error")));
       break;
     }
   }
