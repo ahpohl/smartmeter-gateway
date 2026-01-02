@@ -66,9 +66,6 @@ int main(int argc, char *argv[]) {
   // --- Setup signals and shutdown
   SignalHandler handler;
 
-  // --- Start MQTT consumer ---
-  MqttClient mqtt(cfg.mqtt, handler);
-
   // --- Start Modbus consumer (optional) ---
   std::unique_ptr<ModbusSlave> slave;
   if (cfg.modbus) {
@@ -84,9 +81,10 @@ int main(int argc, char *argv[]) {
     } else {
       try {
         Privileges::drop(runUser, runGroup);
-        mainLogger->info("Dropped privileges to user '{}' group '{}'", runUser,
+        mainLogger->info("Dropped privileges to user '{}' group '{}'",
+                         Privileges::getCurrentUser(),
                          runGroup.empty() ? Privileges::getCurrentGroup()
-                                          : Privileges::getCurrentUser());
+                                          : runGroup);
       } catch (const std::exception &ex) {
         mainLogger->error("Failed to drop privileges: {}", ex.what());
         return EXIT_FAILURE;
@@ -96,6 +94,9 @@ int main(int argc, char *argv[]) {
     mainLogger->warn("Running as root without privilege dropping - "
                      "consider using --user/--group options");
   }
+
+  // --- Start MQTT consumer ---
+  MqttClient mqtt(cfg.mqtt, handler);
 
   // --- Start meter producer
   Meter meter(cfg.meter, handler);

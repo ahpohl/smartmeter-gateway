@@ -43,4 +43,4 @@ logger:
     main: info
     meter: info
     modbus: info
-    mqtt: debug
+    mqtt: info
