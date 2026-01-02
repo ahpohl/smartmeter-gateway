@@ -63,15 +63,29 @@ int main(int argc, char *argv[]) {
     mainLogger = spdlog::default_logger();
   mainLogger->info("Starting {} with config '{}'", PROJECT_NAME, config);
 
-  // check privileges
-  if (!Privileges::isRoot() && cfg.modbus->tcp &&
-      (cfg.modbus->tcp->port < 1024)) {
+  // Warn if --user/--group specified but not running as root
+  if (!Privileges::isRoot() && !runUser.empty()) {
+    mainLogger->error(
+        "--user/--group options specified, but not running as root");
+    mainLogger->error("Either run as root, or remove --user/--group options");
+    return EXIT_FAILURE;
+  }
+
+  // Check if we need root for TCP privileged port
+  if (!Privileges::isRoot() && cfg.modbus && cfg.modbus->tcp &&
+      cfg.modbus->tcp->port < 1024) {
     mainLogger->error("Modbus TCP port {} requires root privileges, but not "
                       "running as root",
                       cfg.modbus->tcp->port);
     mainLogger->error("Either run as root with --user/--group options, or "
                       "change Modbus port to >= 1024");
     return EXIT_FAILURE;
+  }
+
+  // Warn if running as root without privilege drop
+  if (Privileges::isRoot() && runUser.empty()) {
+    mainLogger->warn("Running as root without privilege dropping - "
+                     "consider using --user/--group options");
   }
 
   // --- Setup signals and shutdown
@@ -86,23 +100,16 @@ int main(int argc, char *argv[]) {
   }
 
   // --- Drop privileges after binding to privileged ports ---
-  if (!runUser.empty()) {
-    if (!Privileges::isRoot()) {
-      mainLogger->warn("Not running as root, skipping privilege drop");
-    } else {
-      try {
-        Privileges::drop(runUser, runGroup);
-        mainLogger->info("Dropped privileges to user '{}' group '{}'",
-                         Privileges::getCurrentUser(),
-                         Privileges::getCurrentGroup());
-      } catch (const std::exception &ex) {
-        mainLogger->error("Failed to drop privileges: {}", ex.what());
-        return EXIT_FAILURE;
-      }
+  if (!runUser.empty() && Privileges::isRoot()) {
+    try {
+      Privileges::drop(runUser, runGroup);
+      mainLogger->info("Dropped privileges to user '{}' group '{}'",
+                       Privileges::getCurrentUser(),
+                       Privileges::getCurrentGroup());
+    } catch (const std::exception &ex) {
+      mainLogger->error("Failed to drop privileges: {}", ex.what());
+      return EXIT_FAILURE;
     }
-  } else if (Privileges::isRoot()) {
-    mainLogger->warn("Running as root without privilege dropping - "
-                     "consider using --user/--group options");
   }
 
   // --- Start MQTT consumer ---
