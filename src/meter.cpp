@@ -578,7 +578,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
 }
 
 void Meter::runLoop() {
-  int reconnectDelay = cfg_.reconnectDelay;
+  constexpr int reconnectDelay = 1;
 
   while (handler_.isRunning()) {
 
@@ -588,9 +588,6 @@ void Meter::runLoop() {
       break;
 
     if (connectAction == MeterTypes::ErrorAction::RECONNECT) {
-      meterLogger_->warn("Meter disconnected, trying to reconnect in {} {}...",
-                         reconnectDelay,
-                         reconnectDelay == 1 ? "second" : "seconds");
       {
         std::unique_lock<std::mutex> lock(cbMutex_);
         cv_.wait_for(lock, std::chrono::seconds(reconnectDelay),

@@ -38,7 +38,6 @@ struct GridConfig {
 // Meter config
 struct MeterConfig {
   std::string device;
-  int reconnectDelay;
   int baud;
   int dataBits;
   int stopBits;

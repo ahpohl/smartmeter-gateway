@@ -105,7 +105,6 @@ static MeterConfig parseMeter(const YAML::Node &node) {
 
   MeterConfig cfg;
   cfg.device = node["device"].as<std::string>("/dev/ttyUSB0");
-  cfg.reconnectDelay = node["reconnect_delay"].as<int>(5);
 
   // Start with defaults
   cfg.baud = 9600;
@@ -138,8 +137,6 @@ static MeterConfig parseMeter(const YAML::Node &node) {
     cfg.grid = parseGrid(node["grid"]);
 
   // Validate
-  if (cfg.reconnectDelay <= 0)
-    throw std::invalid_argument("meter.reconnect_delay must be positive");
   if (cfg.baud <= 0)
     throw std::invalid_argument("meter.baud must be positive");
   if (cfg.dataBits < 5 || cfg.dataBits > 8)

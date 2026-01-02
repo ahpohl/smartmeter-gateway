@@ -5,11 +5,9 @@ meter:
   #data_bits: 7
   #stop_bits: 1
   #parity: even   # none | even | odd
-  reconnect_delay: 5
-grid:
-  power_factor: 0.90
-  frequency: 50.00
-
+  grid:
+    power_factor: 0.95
+    frequency: 50.00
 
 modbus:
   tcp:
@@ -44,5 +42,5 @@ logger:
   modules:
     main: info
     meter: info
-    modbus: trace
-    mqtt: info
+    modbus: info
+    mqtt: debug
