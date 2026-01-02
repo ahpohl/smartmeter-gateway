@@ -9,21 +9,21 @@ meter:
     power_factor: 0.95
     frequency: 50.00
 
-#modbus:
-#  tcp:
-#    listen: 0.0.0.0
-#    port: 502
-#  rtu:
-#    device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AC009Y6C-if00-port0
-#    preset: sd_type
-#    #baud: 9600
-#    #data_bits: 8
-#    #stop_bits: 1
-#    #parity: none   # none | even | odd
-#  slave_id: 1
-#  request_timeout: 5
-#  idle_timeout: 60
-#  use_float_model: false
+modbus:
+  tcp:
+    listen: 0.0.0.0
+    port: 502
+  rtu:
+    device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AC009Y6C-if00-port0
+    preset: sd_type
+    #baud: 9600
+    #data_bits: 8
+    #stop_bits: 1
+    #parity: none   # none | even | odd
+  slave_id: 1
+  request_timeout: 5
+  idle_timeout: 60
+  use_float_model: false
       
 mqtt:
   broker: geapoh.home.arpa

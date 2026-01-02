@@ -5,6 +5,7 @@
 #include "meter_types.h"
 #include "modbus_slave.h"
 #include "mqtt_client.h"
+#include "privileges.h"
 #include "signal_handler.h"
 #include <CLI/CLI.hpp>
 #include <cstdlib>
@@ -33,6 +34,16 @@ int main(int argc, char *argv[]) {
 
   // Optional: prevent specifying both at the same time in help/UX
   configOption->excludes("--version");
+
+  // Privilege dropping options
+  std::string runUser;
+  std::string runGroup;
+  app.add_option("-u,--user", runUser,
+                 "Drop privileges to this user after startup")
+      ->envname("METER_USER");
+  app.add_option("-g,--group", runGroup,
+                 "Drop privileges to this group after startup")
+      ->envname("METER_GROUP");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -64,6 +75,26 @@ int main(int argc, char *argv[]) {
     slave = std::make_unique<ModbusSlave>(cfg.modbus.value(), handler);
   } else {
     mainLogger->info("Modbus slave disabled (no modbus section in config)");
+  }
+
+  // --- Drop privileges after binding to privileged ports ---
+  if (!runUser.empty()) {
+    if (!Privileges::isRoot()) {
+      mainLogger->warn("Not running as root, skipping privilege drop");
+    } else {
+      try {
+        Privileges::drop(runUser, runGroup);
+        mainLogger->info("Dropped privileges to user '{}' group '{}'", runUser,
+                         runGroup.empty() ? Privileges::getCurrentGroup()
+                                          : Privileges::getCurrentUser());
+      } catch (const std::exception &ex) {
+        mainLogger->error("Failed to drop privileges: {}", ex.what());
+        return EXIT_FAILURE;
+      }
+    }
+  } else if (Privileges::isRoot()) {
+    mainLogger->warn("Running as root without privilege dropping - "
+                     "consider using --user/--group options");
   }
 
   // --- Start meter producer

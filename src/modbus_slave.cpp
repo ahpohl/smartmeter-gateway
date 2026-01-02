@@ -25,12 +25,13 @@ ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
     modbusLogger_ = spdlog::default_logger();
 
   auto listenAction = handleResult(startListener());
-
-  // Start libmodbus connection thread
-  if (cfg_.tcp)
-    worker_ = std::thread(&ModbusSlave::tcpClientHandler, this);
-  else
-    worker_ = std::thread(&ModbusSlave::rtuClientHandler, this);
+  if (listenAction == MeterTypes::ErrorAction::NONE) {
+    // Start libmodbus connection thread
+    if (cfg_.tcp)
+      worker_ = std::thread(&ModbusSlave::tcpClientHandler, this);
+    else
+      worker_ = std::thread(&ModbusSlave::rtuClientHandler, this);
+  }
 }
 
 ModbusSlave::~ModbusSlave() {
