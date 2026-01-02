@@ -71,17 +71,6 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  // Check if we need root for TCP privileged port
-  if (!Privileges::isRoot() && cfg.modbus && cfg.modbus->tcp &&
-      cfg.modbus->tcp->port < 1024) {
-    mainLogger->error("Modbus TCP port {} requires root privileges, but not "
-                      "running as root",
-                      cfg.modbus->tcp->port);
-    mainLogger->error("Either run as root with --user/--group options, or "
-                      "change Modbus port to >= 1024");
-    return EXIT_FAILURE;
-  }
-
   // Warn if running as root without privilege drop
   if (Privileges::isRoot() && runUser.empty()) {
     mainLogger->warn("Running as root without privilege dropping - "
