@@ -58,13 +58,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # --- Dependencies ---
-find_package(fronius CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(CLI11 REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MOSQUITTO REQUIRED IMPORTED_TARGET libmosquitto)
+pkg_check_modules(MODBUS REQUIRED IMPORTED_TARGET libmodbus)
 
 # --- Sources ---
 set(SRC_FILES
@@ -84,10 +84,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
  
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    fronius::shared
     yaml-cpp
     spdlog::spdlog
     PkgConfig::MOSQUITTO
+    PkgConfig::MODBUS
     nlohmann_json::nlohmann_json
     CLI11::CLI11
 )
