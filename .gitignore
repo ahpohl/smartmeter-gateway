@@ -1,2 +1,3 @@
-build/
-.vscode/
+/build/
+/build-aarch64/
+deploy.sh

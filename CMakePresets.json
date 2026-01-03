@@ -1,0 +1,32 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "arm64-Debug",
+      "displayName": "AArch64 Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/arm64-Debug",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-toolchain.cmake",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "arm64-Release",
+      "displayName": "AArch64 Release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/arm64-Release",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/aarch64-toolchain.cmake",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "arm64-Debug", "configurePreset": "arm64-Debug", "jobs": 8 },
+    { "name": "arm64-Release", "configurePreset": "arm64-Release", "jobs": 8 }
+  ]
+}

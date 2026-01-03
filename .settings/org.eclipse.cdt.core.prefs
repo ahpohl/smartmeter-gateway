@@ -1,6 +1,0 @@
-eclipse.preferences.version=1
-environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1219739615/PATH/delimiter=\:
-environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1219739615/PATH/operation=replace
-environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1219739615/PATH/value=/bin\:/usr/local/bin\:/usr/bin\:/usr/local/sbin\:/usr/lib/jvm/default/bin\:/usr/bin/site_perl\:/usr/bin/vendor_perl\:/usr/bin/core_perl\:/home/alex/x-tools/aarch64-unknown-linux-gnu/bin
-environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1219739615/append=true
-environment/project/cdt.managedbuild.toolchain.gnu.cross.base.1219739615/appendContributed=true

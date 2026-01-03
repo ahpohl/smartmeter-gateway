@@ -1,0 +1,46 @@
+meter:
+  device: /dev/ttyUSB0
+  preset: od_type
+  #baud: 9600
+  #data_bits: 7
+  #stop_bits: 1
+  #parity: even   # none | even | odd
+  grid:
+    power_factor: 0.95
+    frequency: 50.00
+
+modbus:
+  tcp:
+    listen: 0.0.0.0
+    port: 502
+  rtu:
+    device: /dev/ttyUSB1
+    preset: sd_type
+    #baud: 9600
+    #data_bits: 8
+    #stop_bits: 1
+    #parity: none   # none | even | odd
+  slave_id: 1
+  request_timeout: 5
+  idle_timeout: 60
+  use_float_model: false
+
+mqtt:
+  broker: localhost
+  port: 1883
+  topic: smartmeter-gateway
+  #user: mqtt
+  #password: "your secret password"
+  queue_size: 100
+  reconnect_delay:
+    min: 2
+    max: 64
+    exponential: true
+
+logger:
+  level: info     # global default: off | error | warn | info | debug | trace
+  modules:
+    main: info
+    meter: info
+    modbus: info
+    mqtt: info
