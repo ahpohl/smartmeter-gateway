@@ -6,9 +6,9 @@ smartmeter-gateway is a lightweight service that reads operational data from an 
 
 ## Background
 
-This project reads data telegrams using the meter’s infrared (IR) optical port on top of the meter. The meter provides telegrams using standardized **OBIS** identifiers (e.g. energy counter, power, per-phase values). See the [reference documentation](docs/ebz_manual.pdf) for details.
+This project reads data telegrams using the meter’s infrared (IR) optical port on top of the meter. The meter provides telegrams using standardized OBIS identifiers (e.g. energy counter, power, per-phase values). See the [reference documentation](docs/ebz_manual.pdf) for details.
 
-The initial prototype used an Arduino and a simple breadboard circuit with a [photo transistor circuit](https://github.com/ahpohl/smartmeter/wiki/Arduino-breadboard). For a robust permanent installation the breadboard circuit was replaced with an [IR dongle](https://github.com/ahpohl/smartmeter/wiki/IR-dongle-pcb) built on a PCB (build process documented on the wiki): 
+The initial prototype used an Arduino and a simple breadboard circuit with a [photo transistor circuit](https://github.com/ahpohl/smartmeter/wiki/Arduino-breadboard). For a robust permanent installation the breadboard circuit was replaced with an [IR dongle](https://github.com/ahpohl/smartmeter/wiki/IR-dongle-pcb) built on a PCB (build process documented on the wiki) 
 
 ![eBZ smart meter with IR dongle](docs/ebz_with_dongle.png)
 
@@ -97,12 +97,12 @@ logger:
 - meter
   - device: Serial device path of the IR head
   - preset: Serial preset for the meter interface
-     - od_type: Optical device preset for the IR port on the meter, serial settings: 9600 baud, 7 data bits, even parity, 1 stop bit (9600 7E1)
-    - sd_type: Standard device multi functional preset, serial settings: 9600 baud, 8 data bits, no parity, 1 stop bit (9600 8N1)
+     - od_type: Optical device preset for the IR port on the meter, 9600 baud, 7 data bits, even parity, 1 stop bit (9600 7E1)
+    - sd_type: Standard device, multi functional preset, 9600 baud, 8 data bits, no parity, 1 stop bit (9600 8N1)
   - Note: you can override the preset by specifying any of the individual parameters below. If no preset is given, then all of the individual parameters must be provided
-    - baud: Baud rate (e.g., 9600, 19200, 38400).
-    - data_bits: Data bits (e.g., 5,6,7,8)
-    - stop_bits: Stop bits (e.g., 1 or 2)
+    - baud: Baud rate (e.g. 9600, 19200, 38400).
+    - data_bits: Data bits (5,6,7,8)
+    - stop_bits: Stop bits (1,2)
     - parity: Parity, allowed values are none, even, odd
   - grid (optional)
     - power_factor: Assumed PF used to derive apparent/reactive power (default 0.95)
@@ -112,13 +112,13 @@ logger:
   - Note: Configure at least one transport (tcp or rtu). If both are configured, TCP takes precedence over RTU
   - tcp
     - listen: Bind address for Modbus TCP slave (IPv4 or IPv6), e.g. 0.0.0.0 or ::
-    - port: TCP port for Modbus (default is usually 502); ports <1024 may require root/capabilities (see --user/--group)
+    - port: TCP port for Modbus (default 502)
   - rtu
     - device: Serial device path (e.g. /dev/ttyUSB1)
     - preset: Serial preset for RTU line settings (od_type or sd_type), see meter config
   - slave_id: Modbus unit/slave ID (typically 1)
   - request_timeout: timeout between requests (indications) from the master (seconds)
-  - idle_timeout: Idle timeout until forceful client disconnect (seconds)
+  - idle_timeout: disconnect client if no activity (seconds)
   - use_float_model
       - true: exposes values using float registers
       - false: uses integer + scale factor registers
@@ -126,7 +126,7 @@ logger:
 - mqtt
   - broker: Hostname or IP of the MQTT broker. 
   - port: MQTT broker port (1883 for unencrypted, 8883 for TLS, if supported by your setup).
-  - topic: Base MQTT topic to publish under (e.g., fronius-bridge). Subtopics may be used for values/events/device/availability info.
+  - topic: Base MQTT topic to publish under (e.g., smartmeter-gateway). Subtopics may be used for values/device/availability info.
   - user: Optional username for broker authentication.
   - password: Optional password for broker authentication.
   - queue_size: Size of the internal publish queue. Increase if bursts of data may outpace network/broker temporarily.
@@ -230,46 +230,41 @@ logger:
 | Field | Description | Units | OBIS | Notes |
 |---|---|---:|---|---|
 | time | Timestamp (Unix epoch) | ms | — | UTC milliseconds since epoch |
-| energy | Cumulative imported energy | kWh | 1-0:1.8.0*255 | — |
-| power_active | Total active power (all phases) | W | 1-0:16.7.0*255 | — |
+| energy | Cumulative imported energy | kWh | 1-0:1.8.0\*255 | — |
+| power_active | Total active power (all phases) | W | 1-0:16.7.0\*255 | — |
 | power_apparent | Total apparent power | VA | — | Derived |
 | power_reactive | Total reactive power | var | — | Derived |
 | power_factor | Power factor | — | — | Assumed |
 | frequency | Mains frequency | Hz | — | Assumed |
 | voltage_ph | Average phase-to-neutral voltage | V | — | Derived |
 | voltage_pp | Average phase-to-phase voltage | V | — | Derived |
-| active_time | Meter active/sensor time | s | 0-0:96.8.0*255 | Parsed as **hex** |
+| active_time | Meter active/sensor time | s | 0-0:96.8.0\*255 | — |
 | phases[].id | Phase index | — | — | 1..3 |
-| phases[].power_active | Per-phase active power | W | 1-0:36.7.0*255 (L1) 1-0:56.7.0*255 (L2) 1-0:76.7.0*255 (L3) | — |
+| phases[].power_active | Per-phase active power | W | 1-0:36.7.0\*255 (L1) 1-0:56.7.0\*255 (L2) 1-0:76.7.0\*255 (L3) | — |
 | phases[].power_apparent | Per-phase apparent power | VA | — | Derived |
 | phases[].power_reactive | Per-phase reactive power | var | — | Derived |
 | phases[].power_factor | Per-phase power factor | — | — | Assumed (same as top-level) |
-| phases[].voltage_ph | Per-phase phase-to-neutral voltage | V | 1-0:32.7.0*255 (L1) 1-0:52.7.0*255 (L2) 1-0:72.7.0*255 (L3) | — |
+| phases[].voltage_ph | Per-phase phase-to-neutral voltage | V | 1-0:32.7.0\*255 (L1) 1-0:52.7.0\*255 (L2) 1-0:72.7.0\*255 (L3) | — |
 | phases[].voltage_pp | Per-phase phase-to-phase voltage | V | — | Derived |
 | phases[].current | Per-phase current | A | — | Derived |
 | manufacturer | Meter manufacturer | — | — | Currently hardcoded to "EasyMeter" |
 | model | Meter model | — | — | Currently hardcoded to "DD3-BZ06-ETA-ODZ1" |
-| serial_number | Meter serial / device ID | — | 1-0:96.1.0*255 | — |
+| serial_number | Meter serial / device ID | — | 1-0:96.1.0\*255 | — |
 | firmware_version | Meter firmware version | — | — | Parsed from the leading version line "/" |
-| status | Meter status word | — | 1-0:96.5.0*255 | hex string |
+| status | Meter status word | — | 1-0:96.5.0\255 | hex string |
 | phases | Number of phases | — | — | currently hardcoded to "3" |
 | options | Gateway build/version info | — | — | — |
 | availability | Connection state | — | — | "connected" or "disconnected"; published on connect/disconnect/validation failure |
 
 ### Power factor
 
-`power_factor` is published as a signed value with a range of **-1.0 .. 1.0**.
+`power_factor` is published as a signed value with a range of -1.0 .. 1.0.
 
 A typical interpretation is:
-- **positive** values: lagging (inductive) load
-- **negative** values: leading (capacitive) / feed-in
+- positive values: lagging (inductive) load
+- negative values: leading (capacitive) / feed-in
 
-The smart meter does **not** provide a measured power factor in the OBIS telegrams used here. Therefore the gateway **assumes** a default value of 0.95 (configurable via `meter.grid.power_factor`), which is a reasonable approximation for a modern household with inverter-driven appliances.
-
-This assumed value is used to derive:
-- apparent power
-- reactive power
-- current
+The smart meter does **not** provide a measured power factor in the OBIS telegrams used here. Therefore the gateway **assumes** a default value of 0.95 (configurable via `meter.grid.power_factor`), which is a reasonable approximation for a modern household with inverter-driven appliances. This assumed value is used to derive apparent power, reactive power and current.
 
 ### MQTT publish defaults
 
@@ -286,9 +281,9 @@ This assumed value is used to derive:
   - Verify slave_id and transport (TCP vs RTU) match your setup.
 - Frequent reconnects:
   - Check broker reachability and credentials.
-  - Adjust mqtt.reconnect_delay and modbus.reconnect_delay backoff ranges.
+  - Adjust `mqtt.reconnect_delay` and `modbus.reconnect_delay` backoff ranges.
 - Permission denied opening the serial device
-  - Inspect permissions
+  - Inspect device permissions (e.g. `ls -la`)
   - Add the runtime user to the appropriate group
 
 ## Security considerations
@@ -300,19 +295,9 @@ This assumed value is used to derive:
   - If you don’t want to run as root at all, consider:
     - using a non-privileged Modbus port (e.g. 1502), or
     - granting only the required capability to bind low ports (e.g. `cap_net_bind_service`) instead of full root.
-
 - Prefer running MQTT behind a trusted network or VPN
-  - The published data can reveal detailed consumption patterns. Avoid exposing the broker directly to the internet.
-  - If remote access is required, put the broker behind WireGuard/OpenVPN, or use a private broker reachable only via a VPN.
-
 - If using authentication, set `mqtt.user` and `mqtt.password` and protect the config file
-  - Store the config with restrictive permissions (e.g. readable only by the service user).
-  - Avoid embedding credentials in container images; pass the config via a mounted volume or secrets mechanism. 
 
 ## License
 
 [MIT](LICENSE)
-
----
-
-*fronius-bridge* is not affiliated with or endorsed by Fronius International GmbH. 
