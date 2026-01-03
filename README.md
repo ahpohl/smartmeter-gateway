@@ -256,15 +256,36 @@ logger:
 | options | Gateway build/version info | — | — | — |
 | availability | Connection state | — | — | "connected" or "disconnected"; published on connect/disconnect/validation failure |
 
-### Power factor
+### Derived quantities
 
-`power_factor` is published as a signed value with a range of -1.0 .. 1.0.
+#### Apparent power, reactive power, current
 
-A typical interpretation is:
-- positive values: lagging (inductive) load
-- negative values: leading (capacitive) / feed-in
+The smart meter telegram provides active power (<code>P</code>, in W). Because the meter does not provide a measured power factor, the gateway uses an assumed power factor with the following convention:
+- <code>pf &gt; 0</code>: lagging (inductive) ⇒ <code>Q &gt; 0</code>
+- <code>pf &lt; 0</code>: leading (capacitive / feed-in) ⇒ <code>Q &lt; 0</code>
 
-The smart meter does **not** provide a measured power factor in the OBIS telegrams used here. Therefore the gateway **assumes** a default value of 0.95 (configurable via `meter.grid.power_factor`), which is a reasonable approximation for a modern household with inverter-driven appliances. This assumed value is used to derive apparent power, reactive power and current.
+The gateway additionally derives:
+
+1) Apparent power <code>S</code> (in VA): <code>S = |P| / |pf|</code>
+2) Reactive power <code>Q</code> (in var): <code>|Q| = |P| * tan(acos(|pf|))</code>
+3) Per-phase currents (in A):
+
+- <code>I<sub>1</sub> = P<sub>1</sub> / (V<sub>1</sub> · pf)</code>
+- <code>I<sub>2</sub> = P<sub>2</sub> / (V<sub>2</sub> · pf)</code>
+- <code>I<sub>3</sub> = P<sub>3</sub> / (V<sub>3</sub> · pf)</code>
+
+4) Total current (in A):
+- <code>current = I<sub>1</sub> + I<sub>2</sub> + I<sub>3</sub></code>
+
+#### Phase-to-phase voltage
+
+The gateway derives phase-to-phase (line-to-line) voltages from the measured phase-to-neutral voltages using the magnitude of the phasor difference of two phase voltages with a 120° phase shift.
+- <code>V<sub>12</sub> = sqrt(V<sub>1</sub><sup>2</sup> + V<sub>2</sub><sup>2</sup> + V<sub>1</sub>·V<sub>2</sub>)</code>
+- <code>V<sub>23</sub> = sqrt(V<sub>2</sub><sup>2</sup> + V<sub>3</sub><sup>2</sup> + V<sub>2</sub>·V<sub>3</sub>)</code>
+- <code>V<sub>31</sub> = sqrt(V<sub>3</sub><sup>2</sup> + V<sub>1</sub><sup>2</sup> + V<sub>3</sub>·V<sub>1</sub>)</code>
+
+And the published aggregate <code>voltage_pp</code> is the mean of these three values:
+- <code>voltage_pp = (V<sub>12</sub> + V<sub>23</sub> + V<sub>31</sub>) / 3</code>
 
 ### MQTT publish defaults
 
