@@ -1,5 +1,5 @@
 meter:
-  device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AB65FI6I-if00-port0
+  device: /dev/ttyUSB0
   preset: od_type
   #baud: 9600
   #data_bits: 7
@@ -14,7 +14,7 @@ modbus:
     listen: 0.0.0.0
     port: 502
   rtu:
-    device: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AC009Y6C-if00-port0
+    device: /dev/ttyUSB1
     preset: sd_type
     #baud: 9600
     #data_bits: 8
@@ -24,9 +24,9 @@ modbus:
   request_timeout: 5
   idle_timeout: 60
   use_float_model: false
-      
+
 mqtt:
-  broker: geapoh.home.arpa
+  broker: localhost
   port: 1883
   topic: smartmeter-gateway
   #user: mqtt
@@ -36,7 +36,7 @@ mqtt:
     min: 2
     max: 64
     exponential: true
-  
+
 logger:
   level: info     # global default: off | error | warn | info | debug | trace
   modules:
