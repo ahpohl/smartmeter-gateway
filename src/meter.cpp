@@ -463,7 +463,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
-  newJson["energy"] = JsonUtils::roundTo(values.energy, 3);
+  newJson["energy"] = JsonUtils::roundTo(values.energy, 6);
   newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
   newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
   newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);
