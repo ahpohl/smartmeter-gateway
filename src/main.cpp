@@ -67,7 +67,6 @@ int main(int argc, char *argv[]) {
   if (!Privileges::isRoot() && !runUser.empty()) {
     mainLogger->error(
         "--user/--group options specified, but not running as root");
-    mainLogger->error("Either run as root, or remove --user/--group options");
     return EXIT_FAILURE;
   }
 
