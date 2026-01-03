@@ -230,31 +230,31 @@ logger:
 | Field | Description | Units | OBIS | Notes |
 |---|---|---:|---|---|
 | time | Timestamp (Unix epoch) | ms | — | UTC milliseconds since epoch |
-| energy | Cumulative imported energy | kWh | `1-0:1.8.0*255` |  |
-| power_active | Total active power (all phases) | W | `1-0:16.7.0*255` |  |
-| power_apparent | Total apparent power | VA | — | Derived from `power_active / power_factor` |
-| power_reactive | Total reactive power | var | — | Derived from `tan(acos(power_factor)) * power_active` |
-| power_factor | Power factor | — | — | Assumed; default 0.95 (config: `meter.grid.power_factor`) |
-| frequency | Mains frequency | Hz | — | Assumed; default 50.0 (config: `meter.grid.frequency`) |
-| voltage_ph | Average phase-to-neutral voltage | V | — | Derived (mean of `phases[].voltage_ph`) |
-| voltage_pp | Average phase-to-phase voltage | V | — | Derived (mean of `phases[].voltage_pp`) |
-| active_time | Meter active/sensor time | s | `0-0:96.8.0*255` | Parsed as **hex** |
+| energy | Cumulative imported energy | kWh | 1-0:1.8.0*255 | — |
+| power_active | Total active power (all phases) | W | 1-0:16.7.0*255 | — |
+| power_apparent | Total apparent power | VA | — | Derived |
+| power_reactive | Total reactive power | var | — | Derived |
+| power_factor | Power factor | — | — | Assumed |
+| frequency | Mains frequency | Hz | — | Assumed |
+| voltage_ph | Average phase-to-neutral voltage | V | — | Derived |
+| voltage_pp | Average phase-to-phase voltage | V | — | Derived |
+| active_time | Meter active/sensor time | s | 0-0:96.8.0*255 | Parsed as **hex** |
 | phases[].id | Phase index | — | — | 1..3 |
-| phases[].power_active | Per-phase active power | W | `1-0:36.7.0*255` (L1), `1-0:56.7.0*255` (L2), `1-0:76.7.0*255` (L3) |  |
+| phases[].power_active | Per-phase active power | W | 1-0:36.7.0*255 (L1) 1-0:56.7.0*255 (L2) 1-0:76.7.0*255 (L3) | — |
 | phases[].power_apparent | Per-phase apparent power | VA | — | Derived |
 | phases[].power_reactive | Per-phase reactive power | var | — | Derived |
-| phases[].power_factor | Per-phase power factor | — | — | Assumed (same as top-level `power_factor`) |
-| phases[].voltage_ph | Per-phase phase-to-neutral voltage | V | `1-0:32.7.0*255` (L1), `1-0:52.7.0*255` (L2), `1-0:72.7.0*255` (L3) | Rounded to 1 decimal |
+| phases[].power_factor | Per-phase power factor | — | — | Assumed (same as top-level) |
+| phases[].voltage_ph | Per-phase phase-to-neutral voltage | V | 1-0:32.7.0*255 (L1) 1-0:52.7.0*255 (L2) 1-0:72.7.0*255 (L3) | — |
 | phases[].voltage_pp | Per-phase phase-to-phase voltage | V | — | Derived |
-| phases[].current | Per-phase current | A | — | Derived from `power_active / (voltage_ph * power_factor)`, rounded to 3 decimals |
-| manufacturer | Meter manufacturer | — | — | Currently hardcoded to `EasyMeter` |
-| model | Meter model | — | — | Currently hardcoded to `DD3-BZ06-ETA-ODZ1` |
-| serial_number | Meter serial / device ID | — | `1-0:96.1.0*255` |  |
-| firmware_version | Meter firmware version | — | — | Parsed from the leading version line |
-| status | Meter status word | — | `1-0:96.5.0*255` | hex string |
-| phases | Number of phases | — | — | currently hardcoded to `3` |
-| options | Gateway build/version info | — | — |  |
-| availability | Connection state | — | — |  `connected` or `disconnected`; published on connect/disconnect/validation failure |
+| phases[].current | Per-phase current | A | — | Derived |
+| manufacturer | Meter manufacturer | — | — | Currently hardcoded to "EasyMeter" |
+| model | Meter model | — | — | Currently hardcoded to "DD3-BZ06-ETA-ODZ1" |
+| serial_number | Meter serial / device ID | — | 1-0:96.1.0*255 | — |
+| firmware_version | Meter firmware version | — | — | Parsed from the leading version line "/" |
+| status | Meter status word | — | 1-0:96.5.0*255 | hex string |
+| phases | Number of phases | — | — | currently hardcoded to "3" |
+| options | Gateway build/version info | — | — | — |
+| availability | Connection state | — | — | "connected" or "disconnected"; published on connect/disconnect/validation failure |
 
 ### Power factor
 
