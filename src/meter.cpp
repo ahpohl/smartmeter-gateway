@@ -429,9 +429,9 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
   phases.push_back({
       {"id", 1},
-      {"power_active", JsonUtils::roundTo(values.phase1.activePower, 0)},
-      {"power_apparent", JsonUtils::roundTo(values.phase1.apparentPower, 0)},
-      {"power_reactive", JsonUtils::roundTo(values.phase1.reactivePower, 0)},
+      {"power_active", JsonUtils::roundTo(values.phase1.activePower, 2)},
+      {"power_apparent", JsonUtils::roundTo(values.phase1.apparentPower, 2)},
+      {"power_reactive", JsonUtils::roundTo(values.phase1.reactivePower, 2)},
       {"power_factor", JsonUtils::roundTo(values.phase1.powerFactor, 2)},
       {"voltage_ph", JsonUtils::roundTo(values.phase1.phVoltage, 1)},
       {"voltage_pp", JsonUtils::roundTo(values.phase1.ppVoltage, 1)},
@@ -441,9 +441,9 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
   phases.push_back({
       {"id", 2},
-      {"power_active", JsonUtils::roundTo(values.phase2.activePower, 0)},
-      {"power_apparent", JsonUtils::roundTo(values.phase2.apparentPower, 0)},
-      {"power_reactive", JsonUtils::roundTo(values.phase2.reactivePower, 0)},
+      {"power_active", JsonUtils::roundTo(values.phase2.activePower, 2)},
+      {"power_apparent", JsonUtils::roundTo(values.phase2.apparentPower, 2)},
+      {"power_reactive", JsonUtils::roundTo(values.phase2.reactivePower, 2)},
       {"power_factor", JsonUtils::roundTo(values.phase2.powerFactor, 2)},
       {"voltage_ph", JsonUtils::roundTo(values.phase2.phVoltage, 1)},
       {"voltage_pp", JsonUtils::roundTo(values.phase2.ppVoltage, 1)},
@@ -453,9 +453,9 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
   phases.push_back({
       {"id", 3},
-      {"power_active", JsonUtils::roundTo(values.phase3.activePower, 0)},
-      {"power_apparent", JsonUtils::roundTo(values.phase3.apparentPower, 0)},
-      {"power_reactive", JsonUtils::roundTo(values.phase3.reactivePower, 0)},
+      {"power_active", JsonUtils::roundTo(values.phase3.activePower, 2)},
+      {"power_apparent", JsonUtils::roundTo(values.phase3.apparentPower, 2)},
+      {"power_reactive", JsonUtils::roundTo(values.phase3.reactivePower, 2)},
       {"power_factor", JsonUtils::roundTo(values.phase3.powerFactor, 2)},
       {"voltage_ph", JsonUtils::roundTo(values.phase3.phVoltage, 1)},
       {"voltage_pp", JsonUtils::roundTo(values.phase3.ppVoltage, 1)},
@@ -463,10 +463,10 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
-  newJson["energy"] = JsonUtils::roundTo(values.energy, 1);
-  newJson["power_active"] = JsonUtils::roundTo(values.activePower, 0);
-  newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 0);
-  newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 0);
+  newJson["energy"] = JsonUtils::roundTo(values.energy, 3);
+  newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
+  newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
+  newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);
   newJson["power_factor"] = JsonUtils::roundTo(values.powerFactor, 2);
   newJson["phases"] = phases;
   newJson["active_time"] = values.activeSensorTime;
