@@ -423,9 +423,9 @@ void ModbusSlave::tcpClientWorker(int socket) {
     }
   }
 
-  modbusLogger_->debug("tcpClientWorker(): client connected (slave_id={}, "
-                       "request_timeout={}s, idle_timeout={}s)",
-                       cfg_.slaveId, cfg_.requestTimeout, cfg_.idleTimeout);
+  // Extract client connection information (IPv4 and IPv6 compatible)
+  auto [client_ip, client_port] = ModbusUtils::getClientInfo(socket);
+  modbusLogger_->info("Client connected from {}:{}", client_ip, client_port);
 
   uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
 
@@ -461,9 +461,10 @@ void ModbusSlave::tcpClientWorker(int socket) {
       continue;
     }
 
-    // --- Empty frame (connection closed by client) ---
+    // --- Empty frame (connection closed by client gracefully) ---
     if (rc == 0) {
-      modbusLogger_->debug("tcpClientWorker(): client closed connection");
+      modbusLogger_->info("Client {}:{} closed connection", client_ip,
+                          client_port);
       break;
     }
 
@@ -473,9 +474,8 @@ void ModbusSlave::tcpClientWorker(int socket) {
     if (errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK) {
       auto now = std::chrono::steady_clock::now();
       if (now - lastActivity > idleTimeout) {
-        modbusLogger_->info(
-            "tcpClientWorker(): client idle timeout ({}s), disconnecting",
-            cfg_.idleTimeout);
+        modbusLogger_->info("Client {}:{} idle timeout ({}s), disconnecting",
+                            client_ip, client_port, cfg_.idleTimeout);
         break;
       }
       continue;
@@ -486,9 +486,9 @@ void ModbusSlave::tcpClientWorker(int socket) {
       continue; // isRunning() checked at loop start
     }
 
-    // fatal errors - connection issue or protocol error
-    modbusLogger_->debug("tcpClientWorker(): client disconnected: {}",
-                         modbus_strerror(errno));
+    // Connection issue, protocol error or abrupt disconnection
+    modbusLogger_->info("Client {}:{} disconnected: {}", client_ip, client_port,
+                        modbus_strerror(errno));
     break;
   }
 
@@ -518,21 +518,25 @@ void ModbusSlave::rtuClientHandler() {
     }
   }
 
-  modbusLogger_->debug("rtuClientHandler(): listening for requests "
-                       "(slave_id={}, request_timeout={}s, idle_timeout={}s)",
-                       cfg_.slaveId, cfg_.requestTimeout, cfg_.idleTimeout);
-
   uint8_t query[MODBUS_RTU_MAX_ADU_LENGTH];
 
   // Track last activity time for idle timeout
   auto lastActivity = std::chrono::steady_clock::now();
   auto idleTimeout = std::chrono::seconds(cfg_.idleTimeout);
+  bool isActive = false;
 
   while (handler_.isRunning()) {
     int rc = modbus_receive(listenCtx_, query);
 
     // --- Valid request received ---
     if (rc > 0) {
+      if (!isActive) {
+        modbusLogger_->info("Client connected (slave_id={}, "
+                            "request_timeout={}s, idle_timeout={}s)",
+                            cfg_.slaveId, cfg_.requestTimeout,
+                            cfg_.idleTimeout);
+        isActive = true;
+      }
       lastActivity = std::chrono::steady_clock::now();
 
       auto regs = regs_.load();
@@ -559,10 +563,11 @@ void ModbusSlave::rtuClientHandler() {
     // Timeout - expected, check idle and continue
     if (errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK) {
       auto now = std::chrono::steady_clock::now();
-      if (now - lastActivity > idleTimeout) {
-        modbusLogger_->debug("rtuClientHandler(): idle for {}s",
-                             cfg_.idleTimeout);
+      if (now - lastActivity > idleTimeout && isActive) {
+        modbusLogger_->info("Client disconnected, idle for {}s",
+                            cfg_.idleTimeout);
         lastActivity = now;
+        isActive = false;
       }
       continue;
     }
@@ -580,8 +585,8 @@ void ModbusSlave::rtuClientHandler() {
     }
 
     // Other errors - log and try to continue
-    modbusLogger_->warn("rtuClientHandler(): receive error: {}",
-                        modbus_strerror(errno));
+    modbusLogger_->debug("rtuClientHandler(): receive error: {}",
+                         modbus_strerror(errno));
   }
 
   modbusLogger_->debug("Modbus RTU slave run loop stopped");

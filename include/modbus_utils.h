@@ -3,11 +3,13 @@
 
 #include "modbus_error.h"
 #include "register_base.h"
+#include <arpa/inet.h>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <expected>
 #include <modbus/modbus.h>
+#include <netinet/in.h>
 #include <string>
 
 namespace detail {
@@ -166,6 +168,34 @@ inline std::expected<void, ModbusError> packToModbus(modbus_mapping_t *dest,
   dest->tab_registers[sf.ADDR] = static_cast<uint16_t>(sf_value);
 
   return {};
+}
+
+inline std::pair<std::string, int> getClientInfo(int socket) {
+  struct sockaddr_storage addr;
+  socklen_t addr_len = sizeof(addr);
+
+  if (getpeername(socket, (struct sockaddr *)&addr, &addr_len) != 0) {
+    return {"unknown", 0};
+  }
+
+  char ip_str[INET6_ADDRSTRLEN];
+  int port = 0;
+
+  if (addr.ss_family == AF_INET) {
+    // IPv4
+    struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr;
+    inet_ntop(AF_INET, &addr_in->sin_addr, ip_str, sizeof(ip_str));
+    port = ntohs(addr_in->sin_port);
+  } else if (addr.ss_family == AF_INET6) {
+    // IPv6
+    struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)&addr;
+    inet_ntop(AF_INET6, &addr_in6->sin6_addr, ip_str, sizeof(ip_str));
+    port = ntohs(addr_in6->sin6_port);
+  } else {
+    return {"unknown", 0};
+  }
+
+  return {ip_str, port};
 }
 
 } // namespace ModbusUtils
