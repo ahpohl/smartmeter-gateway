@@ -13,8 +13,8 @@
 		</buildCommand>
 	</buildSpec>
 	<natures>
-		<nature>org.eclipse.cdt.core.cnature</nature>
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>org.eclipse.cdt.cmake.core.cmakeNature</nature>
+		<nature>org.eclipse.cdt.core.cnature</nature>
 	</natures>
 </projectDescription>
