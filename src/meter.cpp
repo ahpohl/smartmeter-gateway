@@ -9,7 +9,9 @@
 #include <asm-generic/ioctls.h>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <expected>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
@@ -84,7 +86,7 @@ Meter::handleResult(std::expected<void, ModbusError> &&result) {
     return MeterTypes::ErrorAction::SHUTDOWN;
 
   } else if (err.severity == ModbusError::Severity::TRANSIENT) {
-    // Temporary error - disconnect and reconnect
+    // Temporary error - disconnect, wait and reconnect
     meterLogger_->warn("Transient Meter error: {}", err.describe());
     disconnect();
     return MeterTypes::ErrorAction::RECONNECT;
@@ -189,7 +191,7 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
     serialPortSettings.c_cflag |= CSTOPB;
   }
 
-  // Non-blocking read:  return immediately with available data (VMIN=0), 0.5s
+  // blocking read: wait until buffer has been filled, 0.5s
   // timeout for first byte (VTIME=5)
   serialPortSettings.c_cc[VMIN] = BUFFER_SIZE;
   serialPortSettings.c_cc[VTIME] = 5;
@@ -211,6 +213,12 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
 
   if (availabilityCallback_)
     availabilityCallback_("connected");
+
+  {
+    std::unique_lock<std::mutex> lock(cbMutex_);
+    cv_.wait_for(lock, std::chrono::seconds(1),
+                 [this] { return !handler_.isRunning(); });
+  }
 
   return {};
 }
@@ -578,7 +586,6 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
 }
 
 void Meter::runLoop() {
-  constexpr int reconnectDelay = 1;
 
   while (handler_.isRunning()) {
 
@@ -586,15 +593,6 @@ void Meter::runLoop() {
     auto connectAction = handleResult(tryConnect());
     if (connectAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
-
-    if (connectAction == MeterTypes::ErrorAction::RECONNECT) {
-      {
-        std::unique_lock<std::mutex> lock(cbMutex_);
-        cv_.wait_for(lock, std::chrono::seconds(reconnectDelay),
-                     [this] { return !handler_.isRunning(); });
-      }
-      continue;
-    }
 
     // Read telegram - on any error, loop restarts (will try reconnect)
     auto readAction = handleResult(readTelegram());

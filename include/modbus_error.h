@@ -204,16 +204,16 @@ private:
    */
   static Severity deduceSeverity(int c) {
     switch (c) {
-    case EINVAL:       // Invalid argument
-    case ENOMEM:       // Out of memory
-    case ENOENT:       // No such file or directory
-    case EMBMDATA:     // Too many registers requested
-    case EMBXILFUN:    // Illegal function
-    case EMBXILADD:    // Illegal data address
-    case EMBXILVAL:    // Illegal data value
-    case EMBXSFAIL:    // Slave device or server failure
-    case EMBXGTAR:     // Gateway target device failed to respond
-    case ENODEV:       // No such device
+    case EINVAL: // Invalid argument
+    case ENOMEM: // Out of memory
+    // case ENOENT:    // No such file or directory
+    case EMBMDATA:  // Too many registers requested
+    case EMBXILFUN: // Illegal function
+    case EMBXILADD: // Illegal data address
+    case EMBXILVAL: // Illegal data value
+    case EMBXSFAIL: // Slave device or server failure
+    case EMBXGTAR:  // Gateway target device failed to respond
+    // case ENODEV:       // No such device
     case ENXIO:        // No such device or address
     case EACCES:       // Permission denied
     case EPERM:        // Operation not permitted
