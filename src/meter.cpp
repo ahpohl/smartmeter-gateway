@@ -41,16 +41,19 @@ Meter::~Meter() {
 }
 
 void Meter::disconnect(void) {
+  if (serialPort_ != -1) {
+    close(serialPort_);
+    serialPort_ = -1;
+
+    if (availabilityCallback_)
+      availabilityCallback_("disconnected");
+
+    meterLogger_->info("Meter disconnected");
+  }
   {
-    if (serialPort_ != -1) {
-      close(serialPort_);
-      serialPort_ = -1;
-
-      if (availabilityCallback_)
-        availabilityCallback_("disconnected");
-
-      meterLogger_->info("Meter disconnected");
-    }
+    std::unique_lock<std::mutex> lock(cbMutex_);
+    cv_.wait_for(lock, std::chrono::seconds(1),
+                 [this] { return !handler_.isRunning(); });
   }
 }
 
@@ -213,12 +216,6 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
 
   if (availabilityCallback_)
     availabilityCallback_("connected");
-
-  {
-    std::unique_lock<std::mutex> lock(cbMutex_);
-    cv_.wait_for(lock, std::chrono::seconds(1),
-                 [this] { return !handler_.isRunning(); });
-  }
 
   return {};
 }
@@ -593,6 +590,8 @@ void Meter::runLoop() {
     auto connectAction = handleResult(tryConnect());
     if (connectAction == MeterTypes::ErrorAction::SHUTDOWN)
       break;
+    else if (connectAction == MeterTypes::ErrorAction::RECONNECT)
+      continue;
 
     // Read telegram - on any error, loop restarts (will try reconnect)
     auto readAction = handleResult(readTelegram());

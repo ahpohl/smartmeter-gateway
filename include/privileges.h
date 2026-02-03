@@ -97,10 +97,10 @@ inline void drop(const std::string &user, const std::string &group = "") {
     targetGid = gr->gr_gid;
   }
 
-  // Drop supplementary groups
-  if (setgroups(0, nullptr) != 0) {
+  // Initialize supplementary groups for the user
+  if (initgroups(pw->pw_name, targetGid) != 0) {
     throw std::runtime_error(
-        std::string("Failed to clear supplementary groups: ") +
+        std::string("Failed to initialize supplementary groups: ") +
         std::strerror(errno));
   }
 
