@@ -383,6 +383,8 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
                                                       device.manufacturer));
   handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::MD,
                                                       device.model));
+  handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::OPT,
+                                                      device.options));
   handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::VR,
                                                       device.fwVersion));
   handleResult(ModbusUtils::packToModbus<std::string>(newRegs.get(), C001::SN,
