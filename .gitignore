@@ -4,6 +4,7 @@ Debug/
 Release/
 deploy.sh
 .clangd/
+smartmeter-gateway.zip
 
 # Eclipse CDT project files
 .project

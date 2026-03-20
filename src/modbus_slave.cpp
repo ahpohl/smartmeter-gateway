@@ -264,15 +264,15 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
                                                   values.frequency));
 
   } else {
-    // power factor
-    handleResult(
-        ModbusUtils::packToModbus(newRegs.get(), M20X::PF, values.powerFactor));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHA,
-                                           values.phase1.powerFactor));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHB,
-                                           values.phase2.powerFactor));
-    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PFPHC,
-                                           values.phase3.powerFactor));
+    // power factor (stored as percent × 0.1, SF = -1)
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::PF, M20X::PF_SF,
+                                           values.powerFactor, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PFPHA, M20X::PF_SF, values.phase1.powerFactor, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PFPHB, M20X::PF_SF, values.phase2.powerFactor, 1));
+    handleResult(ModbusUtils::packToModbus(
+        newRegs.get(), M20X::PFPHC, M20X::PF_SF, values.phase3.powerFactor, 1));
 
     // active power
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::W, M20X::W_SF,
