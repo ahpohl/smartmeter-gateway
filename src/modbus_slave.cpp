@@ -178,7 +178,8 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
               static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
   // Convert energy from kWh (meter) to Wh (Fronius modbus register)
-  values.energy *= 1e3;
+  values.energyImport *= 1e3;
+  values.energyExport *= 1e3;
 
   // Convert power factor into percent (Fronius modbus register)
   values.powerFactor *= 100.0;
@@ -259,7 +260,11 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
 
     // energy
     handleResult(ModbusUtils::packToModbus<float>(
-        newRegs.get(), M21X::TOTWH_IMP, values.energy));
+        newRegs.get(), M21X::TOTWH_IMP, values.energyImport));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::TOTWH_EXP, values.energyExport));
+
+    // frequency
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::FREQ,
                                                   values.frequency));
 
@@ -342,7 +347,13 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
 
     // energy
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOTWH_IMP,
-                                           M20X::TOTWH_SF, values.energy, 1));
+                                           M20X::TOTWH_SF, values.energyImport,
+                                           3));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOTWH_EXP,
+                                           M20X::TOTWH_SF, values.energyExport,
+                                           3));
+
+    // frequency
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::FREQ,
                                            M20X::FREQ_SF, values.frequency, 2));
   }

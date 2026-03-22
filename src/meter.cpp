@@ -334,7 +334,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
       if (obis == "1-0:1.8.0*255") {
         size_t pos = value_unit.find("*");
-        values.energy = std::stod(value_unit.substr(0, pos));
+        values.energyImport = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:16.7.0*255") {
         size_t pos = value_unit.find("*");
         values.activePower = std::stod(value_unit.substr(0, pos));
@@ -468,7 +468,8 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
-  newJson["energy"] = JsonUtils::roundTo(values.energy, 6);
+  newJson["energy_import"] = JsonUtils::roundTo(values.energyImport, 3);
+  newJson["energy_export"] = JsonUtils::roundTo(values.energyExport, 3);
   newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
   newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
   newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);
