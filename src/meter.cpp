@@ -334,7 +334,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
       if (obis == "1-0:1.8.0*255") {
         size_t pos = value_unit.find("*");
-        values.energyImport = std::stod(value_unit.substr(0, pos));
+        values.activeEnergy = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:16.7.0*255") {
         size_t pos = value_unit.find("*");
         values.activePower = std::stod(value_unit.substr(0, pos));
@@ -368,7 +368,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     }
   }
 
-  // power factor and frequency (assumed)
+  // fallback power factor and frequency (assumed)
   values.powerFactor = 0.95;
   values.frequency = 50.0;
 
@@ -381,13 +381,13 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   values.phase3.powerFactor = values.powerFactor;
 
   // apparent power
-  values.apparentPower = values.activePower / values.powerFactor;
+  values.apparentPower = std::abs(values.activePower / values.powerFactor);
   values.phase1.apparentPower =
-      values.phase1.activePower / values.phase1.powerFactor;
+      std::abs(values.phase1.activePower / values.phase1.powerFactor);
   values.phase2.apparentPower =
-      values.phase2.activePower / values.phase2.powerFactor;
+      std::abs(values.phase2.activePower / values.phase2.powerFactor);
   values.phase3.apparentPower =
-      values.phase3.activePower / values.phase3.powerFactor;
+      std::abs(values.phase3.activePower / values.phase3.powerFactor);
 
   // reactive power
   values.reactivePower =
@@ -398,6 +398,17 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
                                 values.phase2.activePower;
   values.phase3.reactivePower = std::tan(std::acos(values.phase3.powerFactor)) *
                                 values.phase3.activePower;
+
+  // apparent and reactive energies
+  if (values.powerFactor == 0.0) {
+    values.apparentEnergy = 0.0;
+    values.reactiveEnergy = 0.0;
+  } else {
+    values.apparentEnergy = std::abs(values.activeEnergy / values.powerFactor);
+
+    const double pf = std::clamp(values.powerFactor, -1.0, 1.0);
+    values.reactiveEnergy = std::sin(std::acos(pf)) * values.apparentEnergy;
+  }
 
   // voltages
   values.phVoltage = (values.phase1.phVoltage + values.phase2.phVoltage +
@@ -420,12 +431,15 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
                      3.0;
 
   // currents
-  values.phase1.current = values.phase1.activePower /
-                          (values.phase1.phVoltage * values.powerFactor);
-  values.phase2.current = values.phase2.activePower /
-                          (values.phase2.phVoltage * values.powerFactor);
-  values.phase3.current = values.phase3.activePower /
-                          (values.phase3.phVoltage * values.powerFactor);
+  values.phase1.current =
+      std::abs(values.phase1.activePower /
+               (values.phase1.phVoltage * values.powerFactor));
+  values.phase2.current =
+      std::abs(values.phase2.activePower /
+               (values.phase2.phVoltage * values.powerFactor));
+  values.phase3.current =
+      std::abs(values.phase3.activePower /
+               (values.phase3.phVoltage * values.powerFactor));
   values.current =
       values.phase1.current + values.phase2.current + values.phase3.current;
 
@@ -468,8 +482,9 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
-  newJson["energy_import"] = JsonUtils::roundTo(values.energyImport, 3);
-  newJson["energy_export"] = JsonUtils::roundTo(values.energyExport, 3);
+  newJson["energy_active"] = JsonUtils::roundTo(values.activeEnergy, 3);
+  newJson["energy_apparent"] = JsonUtils::roundTo(values.apparentEnergy, 3);
+  newJson["energy_reactive"] = JsonUtils::roundTo(values.reactiveEnergy, 3);
   newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
   newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
   newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);

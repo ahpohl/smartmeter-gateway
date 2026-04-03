@@ -266,52 +266,103 @@ constexpr Register PF_SF(40106, 1, Register::Type::INT16);
  * @brief Total energy exported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXP(40107, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_EXP(40107, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy exported phase A
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHA(40109, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_EXPPHA(40109, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy exported phase B
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHB(40111, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_EXPPHB(40111, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy exported phase C
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHC(40113, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_EXPPHC(40113, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy imported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMP(40115, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_IMP(40115, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy imported phase A
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHA(40117, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_IMPPHA(40117, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy imported phase B
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHB(40119, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_IMPPHB(40119, 2, Register::Type::UINT32);
 
 /**
  * @brief Total energy imported phase C
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHC(40121, 2, Register::Type::UINT32);
+constexpr Register TOT_WH_IMPPHC(40121, 2, Register::Type::UINT32);
 
-/** @brief Energy scale factor */
-constexpr Register TOTWH_SF(40123, 1, Register::Type::INT16);
+/** @brief Active energy scale factor */
+constexpr Register TOT_WH_SF(40123, 1, Register::Type::INT16);
+
+/**
+ * @brief Total apparent energy exported
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_EXP(40124, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy exported phase A
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_EXPPHA(40126, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy exported phase B
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_EXPPHB(40128, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy exported phase C
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_EXPPHC(40130, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy imported
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_IMP(40132, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy imported phase A
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_IMPPHA(40134, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy imported phase B
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_IMPPHB(40136, 2, Register::Type::UINT32);
+
+/**
+ * @brief Total apparent energy imported phase C
+ * @unit Volt-ampere-hours [VAh]
+ */
+constexpr Register TOT_VAH_IMPPHC(40138, 2, Register::Type::UINT32);
+
+/** @brief Apparent energy scale factor */
+constexpr Register TOT_VAH_SF(40140, 1, Register::Type::INT16);
 
 /** @brief Event flags */
 constexpr Register EVT(40174, 2, Register::Type::UINT32);
@@ -526,97 +577,97 @@ constexpr Register PFPHC(40127, 2, Register::Type::FLOAT);
  * @brief Total AC energy exported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXP(40129, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_EXP(40129, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase A exported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHA(40131, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_EXPPHA(40131, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase B exported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHB(40133, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_EXPPHB(40133, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase C exported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_EXPPHC(40135, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_EXPPHC(40135, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy imported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMP(40137, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_IMP(40137, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase A imported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHA(40139, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_IMPPHA(40139, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase B imported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHB(40141, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_IMPPHB(40141, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC energy phase C imported
  * @unit Watt-hours [Wh]
  */
-constexpr Register TOTWH_IMPPHC(40143, 2, Register::Type::FLOAT);
+constexpr Register TOT_WH_IMPPHC(40143, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy exported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_EXP(40145, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_EXP(40145, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase A exported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_EXPPHA(40147, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_EXPPHA(40147, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase B exported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_EXPPHB(40149, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_EXPPHB(40149, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase C exported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_EXPPHC(40151, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_EXPPHC(40151, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy imported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_IMP(40153, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_IMP(40153, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase A imported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_IMPPHA(40155, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_IMPPHA(40155, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase B imported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_IMPPHB(40157, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_IMPPHB(40157, 2, Register::Type::FLOAT);
 
 /**
  * @brief Total AC apparent energy phase C imported
  * @unit VA-hours [VA]
  */
-constexpr Register TOTVAH_IMPPHC(40159, 2, Register::Type::FLOAT);
+constexpr Register TOT_VAH_IMPPHC(40159, 2, Register::Type::FLOAT);
 
 /** @brief Event flags */
 constexpr Register EVT(40193, 2, Register::Type::UINT32);
