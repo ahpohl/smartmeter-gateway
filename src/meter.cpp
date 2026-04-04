@@ -369,77 +369,78 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   }
 
   // fallback power factor and frequency (assumed)
-  values.powerFactor = 0.95;
-  values.frequency = 50.0;
+  const bool isLeading = cfg_.grid ? cfg_.grid->isLeading : false;
+  values.powerFactor = cfg_.grid ? cfg_.grid->powerFactor : 0.95;
+  values.frequency = cfg_.grid ? cfg_.grid->frequency : 50.0;
 
-  if (cfg_.grid) {
-    values.powerFactor = cfg_.grid->powerFactor;
-    values.frequency = cfg_.grid->frequency;
-  }
   values.phase1.powerFactor = values.powerFactor;
   values.phase2.powerFactor = values.powerFactor;
   values.phase3.powerFactor = values.powerFactor;
 
+  const double sign = isLeading ? -1.0 : 1.0;
+  const double phi = std::acos(std::abs(values.powerFactor));
+
+  const auto apparentPower = [](double active, double pf) {
+    return std::abs(active / pf);
+  };
+
+  const auto reactivePower = [sign](double active, double pf) {
+    return sign * std::tan(std::acos(std::abs(pf))) * active;
+  };
+
   // apparent power
-  values.apparentPower = std::abs(values.activePower / values.powerFactor);
+  values.apparentPower = apparentPower(values.activePower, values.powerFactor);
   values.phase1.apparentPower =
-      std::abs(values.phase1.activePower / values.phase1.powerFactor);
+      apparentPower(values.phase1.activePower, values.powerFactor);
   values.phase2.apparentPower =
-      std::abs(values.phase2.activePower / values.phase2.powerFactor);
+      apparentPower(values.phase2.activePower, values.powerFactor);
   values.phase3.apparentPower =
-      std::abs(values.phase3.activePower / values.phase3.powerFactor);
+      apparentPower(values.phase3.activePower, values.powerFactor);
 
   // reactive power
-  values.reactivePower =
-      std::tan(std::acos(values.powerFactor)) * values.activePower;
-  values.phase1.reactivePower = std::tan(std::acos(values.phase1.powerFactor)) *
-                                values.phase1.activePower;
-  values.phase2.reactivePower = std::tan(std::acos(values.phase2.powerFactor)) *
-                                values.phase2.activePower;
-  values.phase3.reactivePower = std::tan(std::acos(values.phase3.powerFactor)) *
-                                values.phase3.activePower;
+  values.reactivePower = reactivePower(values.activePower, values.powerFactor);
+  values.phase1.reactivePower =
+      reactivePower(values.phase1.activePower, values.powerFactor);
+  values.phase2.reactivePower =
+      reactivePower(values.phase2.activePower, values.powerFactor);
+  values.phase3.reactivePower =
+      reactivePower(values.phase3.activePower, values.powerFactor);
 
   // apparent and reactive energies
-  if (values.powerFactor == 0.0) {
-    values.apparentEnergy = 0.0;
-    values.reactiveEnergy = 0.0;
-  } else {
-    values.apparentEnergy = std::abs(values.activeEnergy / values.powerFactor);
-
-    const double pf = std::clamp(values.powerFactor, -1.0, 1.0);
-    values.reactiveEnergy = std::sin(std::acos(pf)) * values.apparentEnergy;
-  }
+  values.apparentEnergy = std::abs(values.activeEnergy / values.powerFactor);
+  values.reactiveEnergy = sign * std::sin(phi) * values.apparentEnergy;
 
   // voltages
+  const auto ppVoltage = [](double va, double vb) {
+    return std::sqrt(va * va + vb * vb + va * vb);
+  };
+
   values.phVoltage = (values.phase1.phVoltage + values.phase2.phVoltage +
                       values.phase3.phVoltage) /
                      3.0;
+
   values.phase1.ppVoltage =
-      std::sqrt(values.phase1.phVoltage * values.phase1.phVoltage +
-                values.phase2.phVoltage * values.phase2.phVoltage +
-                values.phase1.phVoltage * values.phase2.phVoltage);
+      ppVoltage(values.phase1.phVoltage, values.phase2.phVoltage);
   values.phase2.ppVoltage =
-      std::sqrt(values.phase2.phVoltage * values.phase2.phVoltage +
-                values.phase3.phVoltage * values.phase3.phVoltage +
-                values.phase2.phVoltage * values.phase3.phVoltage);
+      ppVoltage(values.phase2.phVoltage, values.phase3.phVoltage);
   values.phase3.ppVoltage =
-      std::sqrt(values.phase3.phVoltage * values.phase3.phVoltage +
-                values.phase1.phVoltage * values.phase1.phVoltage +
-                values.phase3.phVoltage * values.phase1.phVoltage);
+      ppVoltage(values.phase3.phVoltage, values.phase1.phVoltage);
+
   values.ppVoltage = (values.phase1.ppVoltage + values.phase2.ppVoltage +
                       values.phase3.ppVoltage) /
                      3.0;
 
   // currents
+  const auto phaseCurrent = [&values](double activePower, double phVoltage) {
+    return std::abs(activePower / (phVoltage * values.powerFactor));
+  };
+
   values.phase1.current =
-      std::abs(values.phase1.activePower /
-               (values.phase1.phVoltage * values.powerFactor));
+      phaseCurrent(values.phase1.activePower, values.phase1.phVoltage);
   values.phase2.current =
-      std::abs(values.phase2.activePower /
-               (values.phase2.phVoltage * values.powerFactor));
+      phaseCurrent(values.phase2.activePower, values.phase2.phVoltage);
   values.phase3.current =
-      std::abs(values.phase3.activePower /
-               (values.phase3.phVoltage * values.powerFactor));
+      phaseCurrent(values.phase3.activePower, values.phase3.phVoltage);
   values.current =
       values.phase1.current + values.phase2.current + values.phase3.current;
 

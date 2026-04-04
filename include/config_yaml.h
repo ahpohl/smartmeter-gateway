@@ -33,6 +33,7 @@ struct ReconnectDelayConfig {
 struct GridConfig {
   double powerFactor;
   double frequency;
+  bool isLeading{false};
 };
 
 // Meter config

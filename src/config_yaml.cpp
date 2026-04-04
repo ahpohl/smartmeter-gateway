@@ -88,11 +88,11 @@ static std::optional<GridConfig> parseGrid(const YAML::Node &node) {
   GridConfig cfg;
   cfg.powerFactor = node["power_factor"].as<double>(0.95);
   cfg.frequency = node["frequency"].as<double>(50.0);
+  cfg.isLeading = node["leading"].as<bool>(false);
 
-  // Validate
-  if (cfg.powerFactor <= -1.0 || cfg.powerFactor >= 1.0)
+  if (cfg.powerFactor <= 0.0 || cfg.powerFactor > 1.0)
     throw std::invalid_argument(
-        "meter. grid.power_factor must be in range (-1.0, 1.0]");
+        "meter.grid.power_factor must be in range (0.0, 1.0]");
   if (cfg.frequency <= 0.0)
     throw std::invalid_argument("meter.grid.frequency must be positive");
 
