@@ -500,27 +500,27 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
+  newJson["active_time"] = values.activeSensorTime;
   newJson["energy_active_import"] =
-      JsonUtils::roundTo(values.activeEnergyImport * 1e-3, 3);
+      JsonUtils::roundTo(values.activeEnergyImport, 3);
   newJson["energy_active_export"] =
-      JsonUtils::roundTo(values.activeEnergyExport * 1e-3, 3);
+      JsonUtils::roundTo(values.activeEnergyExport, 3);
   newJson["energy_apparent_import"] =
-      JsonUtils::roundTo(values.apparentEnergyImport * 1e-3, 3);
+      JsonUtils::roundTo(values.apparentEnergyImport, 3);
   newJson["energy_apparent_export"] =
-      JsonUtils::roundTo(values.apparentEnergyExport * 1e-3, 3);
+      JsonUtils::roundTo(values.apparentEnergyExport, 3);
   newJson["energy_reactive_import"] =
-      JsonUtils::roundTo(values.reactiveEnergyImport * 1e-3, 3);
+      JsonUtils::roundTo(values.reactiveEnergyImport, 3);
   newJson["energy_reactive_export"] =
-      JsonUtils::roundTo(values.reactiveEnergyExport * 1e-3, 3);
+      JsonUtils::roundTo(values.reactiveEnergyExport, 3);
   newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
   newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
   newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);
   newJson["power_factor"] = JsonUtils::roundTo(values.powerFactor, 2);
-  newJson["phases"] = phases;
-  newJson["active_time"] = values.activeSensorTime;
   newJson["frequency"] = JsonUtils::roundTo(values.frequency, 2);
   newJson["voltage_ph"] = JsonUtils::roundTo(values.phVoltage, 1);
   newJson["voltage_pp"] = JsonUtils::roundTo(values.ppVoltage, 1);
+  newJson["phases"] = phases;
 
   // Update shared values and JSON with lock
   {
