@@ -178,8 +178,10 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
               static_cast<size_t>(newRegs->nb_registers) * sizeof(uint16_t));
 
   // Convert energy from kWh (meter) to Wh (Fronius modbus register)
-  values.activeEnergy *= 1e3;
-  values.apparentEnergy *= 1e3;
+  values.activeEnergyImport *= 1e3;
+  values.activeEnergyExport *= 1e3;
+  values.apparentEnergyImport *= 1e3;
+  values.apparentEnergyExport *= 1e3;
 
   // Sunspec power factor in percent
   values.powerFactor *= 100;
@@ -189,37 +191,39 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
 
   modbusLogger_->debug(
       "Meter values:\n"
-      "  time            : {}\n"
-      "  activeSensorTime: {}\n"
-      "  activeEnergy    : {:.0f} Wh\n"
-      "  apparentEnergy  : {:.0f} Wh\n"
-      "  phVoltage       : {:.1f} V\n"
-      "  ppVoltage       : {:.1f} V\n"
-      "  current         : {:.3f} A\n"
-      "  activePower     : {:.2f} W\n"
-      "  reactivePower   : {:.2f} var\n"
-      "  apparentPower   : {:.2f} VA\n"
-      "  powerFactor     : {:.2f}\n"
-      "  frequency       : {:.2f} Hz\n"
+      "  time              : {}\n"
+      "  activeSensorTime  : {}\n"
+      "  energy import : P={:.0f}Wh Q={:.0f}varh S={:.0f}VAh\n"
+      "  energy export : P={:.0f}Wh Q={:.0f}varh S={:.0f}VAh\n"
+      "  phVoltage         : {:.1f} V\n"
+      "  ppVoltage         : {:.1f} V\n"
+      "  current           : {:.3f} A\n"
+      "  activePower       : {:.2f} W\n"
+      "  reactivePower     : {:.2f} var\n"
+      "  apparentPower     : {:.2f} VA\n"
+      "  powerFactor       : {:.2f}\n"
+      "  frequency         : {:.2f} Hz\n"
       "  phase1 phV={:.1f}V ppV={:.1f}V I={:.3f}A P={:.2f}W Q={:.2f}var "
       "S={:.2f}VA PF={:.2f}\n"
       "  phase2 phV={:.1f}V ppV={:.1f}V I={:.3f}A P={:.2f}W Q={:.2f}var "
       "S={:.2f}VA PF={:.2f}\n"
       "  phase3 phV={:.1f}V ppV={:.1f}V I={:.3f}A P={:.2f}W Q={:.2f}var "
       "S={:.2f}VA PF={:.2f}",
-      values.time, values.activeSensorTime, values.activeEnergy,
-      values.apparentEnergy, values.phVoltage, values.ppVoltage, values.current,
-      values.activePower, values.reactivePower, values.apparentPower,
-      values.powerFactor, values.frequency, values.phase1.phVoltage,
-      values.phase1.ppVoltage, values.phase1.current, values.phase1.activePower,
-      values.phase1.reactivePower, values.phase1.apparentPower,
-      values.phase1.powerFactor, values.phase2.phVoltage,
-      values.phase2.ppVoltage, values.phase2.current, values.phase2.activePower,
-      values.phase2.reactivePower, values.phase2.apparentPower,
-      values.phase2.powerFactor, values.phase3.phVoltage,
-      values.phase3.ppVoltage, values.phase3.current, values.phase3.activePower,
-      values.phase3.reactivePower, values.phase3.apparentPower,
-      values.phase3.powerFactor);
+      values.time, values.activeSensorTime, values.activeEnergyImport,
+      values.reactiveEnergyImport, values.apparentEnergyImport,
+      values.activeEnergyExport, values.reactiveEnergyExport,
+      values.apparentEnergyExport, values.phVoltage, values.ppVoltage,
+      values.current, values.activePower, values.reactivePower,
+      values.apparentPower, values.powerFactor, values.frequency,
+      values.phase1.phVoltage, values.phase1.ppVoltage, values.phase1.current,
+      values.phase1.activePower, values.phase1.reactivePower,
+      values.phase1.apparentPower, values.phase1.powerFactor,
+      values.phase2.phVoltage, values.phase2.ppVoltage, values.phase2.current,
+      values.phase2.activePower, values.phase2.reactivePower,
+      values.phase2.apparentPower, values.phase2.powerFactor,
+      values.phase3.phVoltage, values.phase3.ppVoltage, values.phase3.current,
+      values.phase3.activePower, values.phase3.reactivePower,
+      values.phase3.apparentPower, values.phase3.powerFactor);
 
   if (cfg_.useFloatModel) {
     // power factor
@@ -292,11 +296,17 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::APHC,
                                                   values.phase3.current));
 
-    // energy
+    // active energy
     handleResult(ModbusUtils::packToModbus<float>(
-        newRegs.get(), M21X::TOT_WH_IMP, values.activeEnergy));
+        newRegs.get(), M21X::TOT_WH_IMP, values.activeEnergyImport));
     handleResult(ModbusUtils::packToModbus<float>(
-        newRegs.get(), M21X::TOT_VAH_IMP, values.apparentEnergy));
+        newRegs.get(), M21X::TOT_WH_EXP, values.activeEnergyExport));
+
+    // apparent energy
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::TOT_VAH_IMP, values.apparentEnergyImport));
+    handleResult(ModbusUtils::packToModbus<float>(
+        newRegs.get(), M21X::TOT_VAH_EXP, values.apparentEnergyExport));
 
     // frequency
     handleResult(ModbusUtils::packToModbus<float>(newRegs.get(), M21X::FREQ,
@@ -379,13 +389,21 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
     handleResult(ModbusUtils::packToModbus(
         newRegs.get(), M20X::APHC, M20X::A_SF, values.phase3.current, 3));
 
-    // energy
+    // active energy
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOT_WH_IMP,
-                                           M20X::TOT_WH_SF, values.activeEnergy,
-                                           0));
+                                           M20X::TOT_WH_SF,
+                                           values.activeEnergyImport, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOT_WH_EXP,
+                                           M20X::TOT_WH_SF,
+                                           values.activeEnergyExport, 0));
+
+    // apparent energy
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOT_VAH_IMP,
                                            M20X::TOT_VAH_SF,
-                                           values.apparentEnergy, 0));
+                                           values.apparentEnergyImport, 0));
+    handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::TOT_VAH_EXP,
+                                           M20X::TOT_VAH_SF,
+                                           values.apparentEnergyExport, 0));
 
     // frequency
     handleResult(ModbusUtils::packToModbus(newRegs.get(), M20X::FREQ,

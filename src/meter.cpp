@@ -312,6 +312,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   values.time = std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count();
+  double activeEnergy;
 
   std::regex obexRegex(R"(^([0-9]-0:[0-9]+.[0-9]+.[0-9]+\*255)\(([^)]+)\))");
   std::string line;
@@ -334,7 +335,7 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
       if (obis == "1-0:1.8.0*255") {
         size_t pos = value_unit.find("*");
-        values.activeEnergy = std::stod(value_unit.substr(0, pos));
+        activeEnergy = std::stod(value_unit.substr(0, pos));
       } else if (obis == "1-0:16.7.0*255") {
         size_t pos = value_unit.find("*");
         values.activePower = std::stod(value_unit.substr(0, pos));
@@ -377,16 +378,21 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   values.phase2.powerFactor = values.powerFactor;
   values.phase3.powerFactor = values.powerFactor;
 
-  const double sign = isLeading ? -1.0 : 1.0;
-  const double phi = std::acos(std::abs(values.powerFactor));
-
   const auto apparentPower = [](double active, double pf) {
     return std::abs(active / pf);
   };
 
+  const double sign = isLeading ? -1.0 : 1.0;
   const auto reactivePower = [sign](double active, double pf) {
     return sign * std::tan(std::acos(std::abs(pf))) * active;
   };
+
+  // active power — direction from power factor sign
+  const double powerSign = values.powerFactor > 0.0 ? 1.0 : -1.0;
+  values.activePower *= powerSign;
+  values.phase1.activePower *= powerSign;
+  values.phase2.activePower *= powerSign;
+  values.phase3.activePower *= powerSign;
 
   // apparent power
   values.apparentPower = apparentPower(values.activePower, values.powerFactor);
@@ -406,9 +412,20 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   values.phase3.reactivePower =
       reactivePower(values.phase3.activePower, values.powerFactor);
 
-  // apparent and reactive energies
-  values.apparentEnergy = std::abs(values.activeEnergy / values.powerFactor);
-  values.reactiveEnergy = sign * std::sin(phi) * values.apparentEnergy;
+  // active energy — direction from power factor sign
+  values.activeEnergyImport = values.powerFactor > 0.0 ? activeEnergy : 0.0;
+  values.activeEnergyExport = values.powerFactor < 0.0 ? activeEnergy : 0.0;
+
+  // apparent energy — magnitude only, direction from isLeading
+  const double apparentEnergy = std::abs(activeEnergy / values.powerFactor);
+  values.apparentEnergyImport = cfg_.grid->isLeading ? 0.0 : apparentEnergy;
+  values.apparentEnergyExport = cfg_.grid->isLeading ? apparentEnergy : 0.0;
+
+  // reactive energy — magnitude only, direction from isLeading
+  const double phi = std::acos(std::abs(values.powerFactor));
+  const double reactiveEnergy = std::sin(phi) * apparentEnergy;
+  values.reactiveEnergyImport = cfg_.grid->isLeading ? 0.0 : reactiveEnergy;
+  values.reactiveEnergyExport = cfg_.grid->isLeading ? reactiveEnergy : 0.0;
 
   // voltages
   const auto ppVoltage = [](double va, double vb) {
@@ -483,9 +500,18 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
   });
 
   newJson["time"] = values.time;
-  newJson["energy_active"] = JsonUtils::roundTo(values.activeEnergy, 3);
-  newJson["energy_apparent"] = JsonUtils::roundTo(values.apparentEnergy, 3);
-  newJson["energy_reactive"] = JsonUtils::roundTo(values.reactiveEnergy, 3);
+  newJson["energy_active_import"] =
+      JsonUtils::roundTo(values.activeEnergyImport * 1e-3, 3);
+  newJson["energy_active_export"] =
+      JsonUtils::roundTo(values.activeEnergyExport * 1e-3, 3);
+  newJson["energy_apparent_import"] =
+      JsonUtils::roundTo(values.apparentEnergyImport * 1e-3, 3);
+  newJson["energy_apparent_export"] =
+      JsonUtils::roundTo(values.apparentEnergyExport * 1e-3, 3);
+  newJson["energy_reactive_import"] =
+      JsonUtils::roundTo(values.reactiveEnergyImport * 1e-3, 3);
+  newJson["energy_reactive_export"] =
+      JsonUtils::roundTo(values.reactiveEnergyExport * 1e-3, 3);
   newJson["power_active"] = JsonUtils::roundTo(values.activePower, 2);
   newJson["power_apparent"] = JsonUtils::roundTo(values.apparentPower, 2);
   newJson["power_reactive"] = JsonUtils::roundTo(values.reactivePower, 2);

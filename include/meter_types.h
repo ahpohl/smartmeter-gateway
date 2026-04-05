@@ -40,9 +40,12 @@ struct MeterTypes {
   struct Values {
     uint64_t time{0};
     uint64_t activeSensorTime{0};
-    double activeEnergy{0.0};
-    double reactiveEnergy{0.0};
-    double apparentEnergy{0.0};
+    double activeEnergyImport{0.0};
+    double activeEnergyExport{0.0};
+    double reactiveEnergyImport{0.0};
+    double reactiveEnergyExport{0.0};
+    double apparentEnergyImport{0.0};
+    double apparentEnergyExport{0.0};
     double phVoltage{0.0};
     double ppVoltage{0.0};
     double current{0.0};
