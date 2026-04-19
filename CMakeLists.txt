@@ -84,7 +84,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
  
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    yaml-cpp
+    yaml-cpp::yaml-cpp
     spdlog::spdlog
     PkgConfig::MOSQUITTO
     PkgConfig::MODBUS

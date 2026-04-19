@@ -87,6 +87,12 @@ int main(int argc, char *argv[]) {
     mainLogger->info("Modbus slave disabled (no modbus section in config)");
   }
 
+  // Catch fatal error during slave startup
+  if (!handler.isRunning()) {
+    mainLogger->error("Startup failed, exiting");
+    return EXIT_FAILURE;
+  }
+
   // --- Drop privileges after binding to privileged ports ---
   if (!runUser.empty() && Privileges::isRoot()) {
     try {
@@ -102,6 +108,12 @@ int main(int argc, char *argv[]) {
 
   // --- Start MQTT consumer ---
   MqttClient mqtt(cfg.mqtt, handler);
+
+  // Catch fatal error during mqtt startup
+  if (!handler.isRunning()) {
+    mainLogger->error("Startup failed, exiting");
+    return EXIT_FAILURE;
+  }
 
   // --- Start meter producer
   Meter meter(cfg.meter, handler);
