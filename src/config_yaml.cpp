@@ -261,7 +261,7 @@ static MqttConfig parseMqtt(const YAML::Node &node) {
   MqttConfig cfg;
   cfg.broker = node["broker"].as<std::string>("localhost");
   cfg.port = node["port"].as<int>(1883);
-  cfg.topic = node["topic"].as<std::string>("fronius-bridge");
+  cfg.topic = node["topic"].as<std::string>("smartmeter-gateway");
   cfg.queueSize = node["queue_size"].as<size_t>(100);
 
   if (node["user"])
