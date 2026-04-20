@@ -1,37 +1,32 @@
-meter:
-  device: /dev/ttyUSB0
-  preset: od_type
-  #baud: 9600
-  #data_bits: 7
-  #stop_bits: 1
-  #parity: even   # none | even | odd
-  grid:
-    power_factor: 0.95
-    leading: false    # false = inductive (lagging), true = capacitive (leading)
-    frequency: 50.00
+# =========================================
+# smartmeter-gateway — configuration
+# =========================================
 
-modbus:
-  tcp:
-    listen: 0.0.0.0
-    port: 502
-  rtu:
-    device: /dev/ttyUSB1
-    preset: sd_type
-    #baud: 9600
-    #data_bits: 8
-    #stop_bits: 1
-    #parity: none   # none | even | odd
-  slave_id: 1
-  request_timeout: 5
-  idle_timeout: 60
-  use_float_model: false
+meter:
+  master:
+    rtu:
+      device: /dev/ttyUSB0
+      baud: 9600
+      data_bits: 7
+      stop_bits: 1
+      parity: even
+  grid:
+      power_factor: 0.95
+      leading: false    # false = inductive (lagging), true = capacitive (leading)
+      frequency: 50.00
+  slave:
+    tcp:
+      listen: 0.0.0.0
+      port: 502
+    unit_id: 1
+    use_float_model: false
 
 mqtt:
   broker: localhost
   port: 1883
-  topic: smartmeter-gateway
+  topic: fronius-bridge
   #user: mqtt
-  #password: "your secret password"
+  #password: "your-secret-password"
   queue_size: 100
   reconnect_delay:
     min: 2
@@ -39,9 +34,10 @@ mqtt:
     exponential: true
 
 logger:
-  level: info     # global default: off | error | warn | info | debug | trace
+  level: info
   modules:
     main: info
-    meter: info
-    modbus: info
     mqtt: info
+    meter:
+      master: info
+      slave: info

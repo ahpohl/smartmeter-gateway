@@ -1,5 +1,5 @@
-#ifndef METER_H_
-#define METER_H_
+#ifndef METER_MASTER_H_
+#define METER_MASTER_H_
 
 #include "config_yaml.h"
 #include "meter_types.h"
@@ -14,10 +14,11 @@
 #include <string>
 #include <thread>
 
-class Meter {
+class MeterMaster {
 public:
-  explicit Meter(const MeterConfig &cfg, SignalHandler &signalHandler);
-  virtual ~Meter();
+  explicit MeterMaster(const MeterMasterConfig &cfg,
+                       SignalHandler &signalHandler);
+  virtual ~MeterMaster();
 
   std::string getJsonDump(void) const;
   MeterTypes::Values getValues(void) const;
@@ -40,13 +41,13 @@ private:
   std::expected<void, ModbusError> tryConnect(void);
   std::expected<void, ModbusError> readTelegram(void);
 
-  const MeterConfig &cfg_;
+  const MeterMasterConfig &cfg_;
   MeterTypes::Values values_;
   MeterTypes::Device device_;
   std::string telegram_;
   nlohmann::ordered_json jsonValues_;
   nlohmann::json jsonDevice_;
-  std::shared_ptr<spdlog::logger> meterLogger_;
+  std::shared_ptr<spdlog::logger> masterLogger_;
   int serialPort_{-1};
 
   // --- threading / callbacks ---
@@ -60,4 +61,4 @@ private:
   std::thread dongle_;
 };
 
-#endif /* METER_H_ */
+#endif /* METER_MASTER_H_ */

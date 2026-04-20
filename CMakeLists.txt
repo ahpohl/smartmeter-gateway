@@ -71,8 +71,8 @@ set(SRC_FILES
     src/main.cpp
     src/config_yaml.cpp
     src/mqtt_client.cpp
-    src/meter.cpp
-    src/modbus_slave.cpp
+    src/meter_master.cpp
+    src/meter_slave.cpp
 )
 
 # --- Executable ---

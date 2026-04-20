@@ -1,9 +1,9 @@
 #include "config.h"
 #include "config_yaml.h"
 #include "logger.h"
-#include "meter.h"
+#include "meter_master.h"
+#include "meter_slave.h"
 #include "meter_types.h"
-#include "modbus_slave.h"
 #include "mqtt_client.h"
 #include "privileges.h"
 #include "signal_handler.h"
@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
   CLI11_PARSE(app, argc, argv);
 
   // --- Load config ---
-  Config cfg;
+  AppConfig cfg;
   try {
     cfg = loadConfig(config);
   } catch (const std::exception &ex) {
@@ -79,63 +79,57 @@ int main(int argc, char *argv[]) {
   // --- Setup signals and shutdown
   SignalHandler handler;
 
-  // --- Start Modbus consumer (optional) ---
-  std::unique_ptr<ModbusSlave> slave;
-  if (cfg.modbus) {
-    slave = std::make_unique<ModbusSlave>(cfg.modbus.value(), handler);
-  } else {
-    mainLogger->info("Modbus slave disabled (no modbus section in config)");
-  }
+  // All objects are declared here so their lifetimes are identical
+  std::unique_ptr<MeterSlave> slave;
+  std::unique_ptr<MqttClient> mqtt;
+  std::unique_ptr<MeterMaster> master;
 
-  // Catch fatal error during slave startup
-  if (!handler.isRunning()) {
-    mainLogger->error("Startup failed, exiting");
-    return EXIT_FAILURE;
-  }
+  try {
+    // --- Start meter slave ---
+    if (cfg.meter.slave) {
+      slave = std::make_unique<MeterSlave>(*cfg.meter.slave, handler);
+    } else {
+      mainLogger->info("Meter slave disabled");
+    }
 
-  // --- Drop privileges after binding to privileged ports ---
-  if (!runUser.empty() && Privileges::isRoot()) {
-    try {
+    // --- Drop privileges after binding to privileged ports ---
+    if (!runUser.empty() && Privileges::isRoot()) {
       Privileges::drop(runUser, runGroup);
       mainLogger->info("Dropped privileges to user '{}' group '{}'",
                        Privileges::getCurrentUser(),
                        Privileges::getCurrentGroup());
-    } catch (const std::exception &ex) {
-      mainLogger->error("Failed to drop privileges: {}", ex.what());
-      return EXIT_FAILURE;
     }
-  }
 
-  // --- Start MQTT consumer ---
-  MqttClient mqtt(cfg.mqtt, handler);
+    // --- Start MQTT client ---
+    mqtt = std::make_unique<MqttClient>(cfg.mqtt, handler);
 
-  // Catch fatal error during mqtt startup
-  if (!handler.isRunning()) {
-    mainLogger->error("Startup failed, exiting");
+    // --- Start meter master
+    master = std::make_unique<MeterMaster>(cfg.meter.master, handler);
+
+    // --- Setup callbacks
+    master->setUpdateCallback(
+        [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Values values) {
+          mqtt->publish(std::move(jsonDump), cfg.mqtt.topic + "/values");
+          if (slave) {
+            slave->updateValues(std::move(values));
+          }
+        });
+    master->setDeviceCallback(
+        [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Device device) {
+          mqtt->publish(std::move(jsonDump), cfg.mqtt.topic + "/device");
+          if (slave) {
+            slave->updateDevice(std::move(device));
+          }
+        });
+    master->setAvailabilityCallback([&mqtt, &cfg](std::string availability) {
+      mqtt->publish(std::move(availability), cfg.mqtt.topic + "/availability");
+    });
+
+  } catch (const std::exception &ex) {
+    mainLogger->error("Startup failed: {}", ex.what());
+    handler.shutdown();
     return EXIT_FAILURE;
   }
-
-  // --- Start meter producer
-  Meter meter(cfg.meter, handler);
-
-  // --- Setup callbacks
-  meter.setUpdateCallback(
-      [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Values values) {
-        mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/values");
-        if (slave) {
-          slave->updateValues(std::move(values));
-        }
-      });
-  meter.setDeviceCallback(
-      [&cfg, &mqtt, &slave](std::string jsonDump, MeterTypes::Device device) {
-        mqtt.publish(std::move(jsonDump), cfg.mqtt.topic + "/device");
-        if (slave) {
-          slave->updateDevice(std::move(device));
-        }
-      });
-  meter.setAvailabilityCallback([&mqtt, &cfg](std::string availability) {
-    mqtt.publish(std::move(availability), cfg.mqtt.topic + "/availability");
-  });
 
   // --- Wait for shutdown signal ---
   handler.wait();

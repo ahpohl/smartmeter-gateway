@@ -1,4 +1,4 @@
-#include "modbus_slave.h"
+#include "meter_slave.h"
 #include "common_registers.h"
 #include "meter_registers.h"
 #include "meter_types.h"
@@ -16,25 +16,34 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-ModbusSlave::ModbusSlave(const ModbusRootConfig &cfg,
-                         SignalHandler &signalHandler)
+MeterSlave::MeterSlave(const MeterSlaveConfig &cfg,
+                       SignalHandler &signalHandler)
     : cfg_(cfg), handler_(signalHandler) {
 
-  modbusLogger_ = spdlog::get("modbus");
+  modbusLogger_ = spdlog::get("meter.slave");
   if (!modbusLogger_)
     modbusLogger_ = spdlog::default_logger();
 
-  auto listenAction = handleResult(startListener());
-  if (listenAction == MeterTypes::ErrorAction::NONE) {
-    // Start libmodbus connection thread
-    if (cfg_.tcp)
-      worker_ = std::thread(&ModbusSlave::tcpClientHandler, this);
-    else
-      worker_ = std::thread(&ModbusSlave::rtuClientHandler, this);
+  auto listenAction = startListener();
+  if (!listenAction) {
+    if (serverSocket_ != -1) {
+      close(serverSocket_);
+      serverSocket_ = -1;
+    }
+    if (listenCtx_) {
+      modbus_free(listenCtx_);
+      listenCtx_ = nullptr;
+    }
+    throw std::runtime_error(listenAction.error().describe());
   }
+
+  if (cfg_.tcp)
+    worker_ = std::thread(&MeterSlave::tcpClientHandler, this);
+  else
+    worker_ = std::thread(&MeterSlave::rtuClientHandler, this);
 }
 
-ModbusSlave::~ModbusSlave() {
+MeterSlave::~MeterSlave() {
   if (worker_.joinable())
     worker_.join();
 
@@ -47,7 +56,7 @@ ModbusSlave::~ModbusSlave() {
     modbus_free(listenCtx_);
 }
 
-std::expected<void, ModbusError> ModbusSlave::startListener(void) {
+std::expected<void, ModbusError> MeterSlave::startListener(void) {
 
   // --- Create register mapping ---
   if (!regs_.load()) {
@@ -85,7 +94,7 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
                                    opt_c_str(std::to_string(cfg_.tcp->port)));
   } else {
     listenCtx_ = modbus_new_rtu(opt_c_str(cfg_.rtu->device), cfg_.rtu->baud,
-                                MeterTypes::parityToChar(cfg_.rtu->parity),
+                                parityToChar(cfg_.rtu->parity),
                                 cfg_.rtu->dataBits, cfg_.rtu->stopBits);
   }
   if (!listenCtx_) {
@@ -123,7 +132,7 @@ std::expected<void, ModbusError> ModbusSlave::startListener(void) {
 }
 
 MeterTypes::ErrorAction
-ModbusSlave::handleResult(std::expected<void, ModbusError> &&result) {
+MeterSlave::handleResult(std::expected<void, ModbusError> &&result) {
   if (result) {
     return MeterTypes::ErrorAction::NONE;
   }
@@ -151,7 +160,7 @@ ModbusSlave::handleResult(std::expected<void, ModbusError> &&result) {
   return MeterTypes::ErrorAction::NONE;
 }
 
-void ModbusSlave::updateValues(MeterTypes::Values values) {
+void MeterSlave::updateValues(MeterTypes::Values values) {
   if (!handler_.isRunning()) {
     modbusLogger_->error("updateValues(): Shutdown in progress");
     return;
@@ -413,7 +422,7 @@ void ModbusSlave::updateValues(MeterTypes::Values values) {
   regs_.store(newRegs);
 }
 
-void ModbusSlave::updateDevice(MeterTypes::Device device) {
+void MeterSlave::updateDevice(MeterTypes::Device device) {
   if (!handler_.isRunning()) {
     modbusLogger_->error("updateDevice(): Shutdown in progress");
     return;
@@ -457,7 +466,7 @@ void ModbusSlave::updateDevice(MeterTypes::Device device) {
   deviceUpdated_ = true;
 }
 
-void ModbusSlave::tcpClientWorker(int socket) {
+void MeterSlave::tcpClientWorker(int socket) {
 
   modbus_t *ctx = modbus_new_tcp(nullptr, 0);
   if (!ctx) {
@@ -562,7 +571,7 @@ void ModbusSlave::tcpClientWorker(int socket) {
   close(socket);
 }
 
-void ModbusSlave::rtuClientHandler() {
+void MeterSlave::rtuClientHandler() {
 
   // Set slave/unit ID
   if (modbus_set_slave(listenCtx_, cfg_.slaveId) == -1) {
@@ -657,7 +666,7 @@ void ModbusSlave::rtuClientHandler() {
   modbusLogger_->debug("Modbus RTU slave run loop stopped");
 }
 
-void ModbusSlave::tcpClientHandler(void) {
+void MeterSlave::tcpClientHandler(void) {
 
   // TCP mode - accept connections and spawn client threads
   if (serverSocket_ == -1) {

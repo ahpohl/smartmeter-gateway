@@ -1,4 +1,4 @@
-#include "meter.h"
+#include "meter_master.h"
 #include "config.h"
 #include "config_yaml.h"
 #include "json_utils.h"
@@ -22,25 +22,26 @@
 
 using json = nlohmann::ordered_json;
 
-Meter::Meter(const MeterConfig &cfg, SignalHandler &signalHandler)
+MeterMaster::MeterMaster(const MeterMasterConfig &cfg,
+                         SignalHandler &signalHandler)
     : cfg_(cfg), handler_(signalHandler) {
 
-  meterLogger_ = spdlog::get("meter");
-  if (!meterLogger_)
-    meterLogger_ = spdlog::default_logger();
+  masterLogger_ = spdlog::get("meter.master");
+  if (!masterLogger_)
+    masterLogger_ = spdlog::default_logger();
 
   // Start update loop thread
-  worker_ = std::thread(&Meter::runLoop, this);
+  worker_ = std::thread(&MeterMaster::runLoop, this);
 }
 
-Meter::~Meter() {
+MeterMaster::~MeterMaster() {
   cv_.notify_all();
   if (worker_.joinable())
     worker_.join();
   disconnect();
 }
 
-void Meter::disconnect(void) {
+void MeterMaster::disconnect(void) {
   if (serialPort_ != -1) {
     close(serialPort_);
     serialPort_ = -1;
@@ -48,7 +49,7 @@ void Meter::disconnect(void) {
     if (availabilityCallback_)
       availabilityCallback_("disconnected");
 
-    meterLogger_->info("Meter disconnected");
+    masterLogger_->info("Meter disconnected");
   }
   {
     std::unique_lock<std::mutex> lock(cbMutex_);
@@ -57,25 +58,25 @@ void Meter::disconnect(void) {
   }
 }
 
-void Meter::setUpdateCallback(
+void MeterMaster::setUpdateCallback(
     std::function<void(std::string, MeterTypes::Values)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   updateCallback_ = std::move(cb);
 }
 
-void Meter::setDeviceCallback(
+void MeterMaster::setDeviceCallback(
     std::function<void(std::string, MeterTypes::Device)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   deviceCallback_ = std::move(cb);
 }
 
-void Meter::setAvailabilityCallback(std::function<void(std::string)> cb) {
+void MeterMaster::setAvailabilityCallback(std::function<void(std::string)> cb) {
   std::lock_guard<std::mutex> lock(cbMutex_);
   availabilityCallback_ = std::move(cb);
 }
 
 MeterTypes::ErrorAction
-Meter::handleResult(std::expected<void, ModbusError> &&result) {
+MeterMaster::handleResult(std::expected<void, ModbusError> &&result) {
   if (result) {
     return MeterTypes::ErrorAction::NONE;
   }
@@ -84,27 +85,27 @@ Meter::handleResult(std::expected<void, ModbusError> &&result) {
 
   if (err.severity == ModbusError::Severity::FATAL) {
     // Fatal error occurred - initiate shutdown sequence
-    meterLogger_->error("FATAL Meter error: {}", err.describe());
+    masterLogger_->error("FATAL Meter error: {}", err.describe());
     handler_.shutdown();
     return MeterTypes::ErrorAction::SHUTDOWN;
 
   } else if (err.severity == ModbusError::Severity::TRANSIENT) {
     // Temporary error - disconnect, wait and reconnect
-    meterLogger_->warn("Transient Meter error: {}", err.describe());
+    masterLogger_->warn("Transient Meter error: {}", err.describe());
     disconnect();
     return MeterTypes::ErrorAction::RECONNECT;
 
   } else if (err.severity == ModbusError::Severity::SHUTDOWN) {
     // Shutdown already in progress - just exit cleanly
-    meterLogger_->trace("Meter operation cancelled due to shutdown: {}",
-                        err.describe());
+    masterLogger_->trace("Meter operation cancelled due to shutdown: {}",
+                         err.describe());
     return MeterTypes::ErrorAction::SHUTDOWN;
   }
 
   return MeterTypes::ErrorAction::NONE;
 }
 
-std::expected<void, ModbusError> Meter::tryConnect(void) {
+std::expected<void, ModbusError> MeterMaster::tryConnect(void) {
   if (!handler_.isRunning()) {
     return std::unexpected(
         ModbusError::custom(EINTR, "tryConnect(): Shutdown in progress"));
@@ -113,7 +114,7 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   if (serialPort_ >= 0)
     return {};
 
-  serialPort_ = open(cfg_.device.c_str(), O_RDONLY | O_NOCTTY);
+  serialPort_ = open(cfg_.rtu->device.c_str(), O_RDONLY | O_NOCTTY);
   if (serialPort_ == -1) {
     return std::unexpected(
         ModbusError::fromErrno("Opening serial device failed"));
@@ -154,14 +155,14 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   cfmakeraw(&serialPortSettings);
 
   // set baud (both directions)
-  speed_t baudSpeed = MeterTypes::baudToSpeed(cfg_.baud);
+  speed_t baudSpeed = baudToSpeed(cfg_.rtu->baud);
   if (cfsetispeed(&serialPortSettings, baudSpeed) < 0 ||
       cfsetospeed(&serialPortSettings, baudSpeed) < 0) {
     int saved_errno = errno;
     close(serialPort_);
     errno = saved_errno;
     return std::unexpected(ModbusError::fromErrno(
-        "Failed to set serial port speed {} baud", cfg_.baud));
+        "Failed to set serial port speed {} baud", cfg_.rtu->baud));
   }
 
   // Base flags: enable receiver, ignore modem control lines
@@ -171,26 +172,26 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   serialPortSettings.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB | CRTSCTS);
 
   // Set data bits
-  serialPortSettings.c_cflag |= MeterTypes::dataBitsToFlag(cfg_.dataBits);
+  serialPortSettings.c_cflag |= dataBitsToFlag(cfg_.rtu->dataBits);
 
   // Set parity
-  switch (cfg_.parity) {
-  case MeterTypes::Parity::Even:
+  switch (cfg_.rtu->parity) {
+  case Parity::Even:
     serialPortSettings.c_cflag |= PARENB;
     serialPortSettings.c_cflag &= ~PARODD;
     break;
-  case MeterTypes::Parity::Odd:
+  case Parity::Odd:
     serialPortSettings.c_cflag |= PARENB;
     serialPortSettings.c_cflag |= PARODD;
     break;
-  case MeterTypes::Parity::None:
+  case Parity::None:
   default:
     // PARENB already cleared above
     break;
   }
 
   // Set stop bits (2 stop bits if stopBits == 2, otherwise 1)
-  if (cfg_.stopBits == 2) {
+  if (cfg_.rtu->stopBits == 2) {
     serialPortSettings.c_cflag |= CSTOPB;
   }
 
@@ -210,9 +211,9 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   // flush both directions if desired after applying settings
   tcflush(serialPort_, TCIOFLUSH);
 
-  meterLogger_->info("Meter connected ({}{}{}, {} baud)", cfg_.dataBits,
-                     MeterTypes::parityToChar(cfg_.parity), cfg_.stopBits,
-                     cfg_.baud);
+  masterLogger_->info("Meter connected ({}{}{}, {} baud)", cfg_.rtu->dataBits,
+                      parityToChar(cfg_.rtu->parity), cfg_.rtu->stopBits,
+                      cfg_.rtu->baud);
 
   if (availabilityCallback_)
     availabilityCallback_("connected");
@@ -220,7 +221,7 @@ std::expected<void, ModbusError> Meter::tryConnect(void) {
   return {};
 }
 
-std::expected<void, ModbusError> Meter::readTelegram() {
+std::expected<void, ModbusError> MeterMaster::readTelegram() {
   if (!handler_.isRunning()) {
     return std::unexpected(
         ModbusError::custom(EINTR, "readTelegram(): Shutdown in progress"));
@@ -279,8 +280,8 @@ std::expected<void, ModbusError> Meter::readTelegram() {
         EPROTO, "readTelegram(): telegram stream not in sync"));
   }
 
-  meterLogger_->trace("Received telegram (len {}):\n{}", packetPos,
-                      std::string(packet.begin(), packet.begin() + packetPos));
+  masterLogger_->trace("Received telegram (len {}):\n{}", packetPos,
+                       std::string(packet.begin(), packet.begin() + packetPos));
 
   {
     std::lock_guard<std::mutex> lock(cbMutex_);
@@ -290,7 +291,7 @@ std::expected<void, ModbusError> Meter::readTelegram() {
   return {};
 }
 
-std::expected<void, ModbusError> Meter::updateValuesAndJson() {
+std::expected<void, ModbusError> MeterMaster::updateValuesAndJson() {
   if (!handler_.isRunning()) {
     return std::unexpected(ModbusError::custom(
         EINTR, "updateValuesAndJson(): Shutdown in progress"));
@@ -369,10 +370,9 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     }
   }
 
-  // fallback power factor and frequency (assumed)
-  const bool isLeading = cfg_.grid ? cfg_.grid->isLeading : false;
-  values.powerFactor = cfg_.grid ? cfg_.grid->powerFactor : 0.95;
-  values.frequency = cfg_.grid ? cfg_.grid->frequency : 50.0;
+  const bool isLeading = cfg_.grid.isLeading;
+  values.powerFactor = cfg_.grid.powerFactor;
+  values.frequency = cfg_.grid.frequency;
 
   values.phase1.powerFactor = values.powerFactor;
   values.phase2.powerFactor = values.powerFactor;
@@ -418,14 +418,14 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
 
   // apparent energy — magnitude only, direction from isLeading
   const double apparentEnergy = std::abs(activeEnergy / values.powerFactor);
-  values.apparentEnergyImport = cfg_.grid->isLeading ? 0.0 : apparentEnergy;
-  values.apparentEnergyExport = cfg_.grid->isLeading ? apparentEnergy : 0.0;
+  values.apparentEnergyImport = isLeading ? 0.0 : apparentEnergy;
+  values.apparentEnergyExport = isLeading ? apparentEnergy : 0.0;
 
   // reactive energy — magnitude only, direction from isLeading
   const double phi = std::acos(std::abs(values.powerFactor));
   const double reactiveEnergy = std::sin(phi) * apparentEnergy;
-  values.reactiveEnergyImport = cfg_.grid->isLeading ? 0.0 : reactiveEnergy;
-  values.reactiveEnergyExport = cfg_.grid->isLeading ? reactiveEnergy : 0.0;
+  values.reactiveEnergyImport = isLeading ? 0.0 : reactiveEnergy;
+  values.reactiveEnergyExport = isLeading ? reactiveEnergy : 0.0;
 
   // voltages
   const auto ppVoltage = [](double va, double vb) {
@@ -529,12 +529,12 @@ std::expected<void, ModbusError> Meter::updateValuesAndJson() {
     jsonValues_ = std::move(newJson);
   }
 
-  meterLogger_->debug("{}", jsonValues_.dump());
+  masterLogger_->debug("{}", jsonValues_.dump());
 
   return {};
 }
 
-std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
+std::expected<void, ModbusError> MeterMaster::updateDeviceAndJson() {
   if (!handler_.isRunning()) {
     return std::unexpected(ModbusError::custom(
         EINTR, "updateDeviceAndJson(): Shutdown in progress"));
@@ -613,7 +613,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
   newJson["phases"] = newDevice.phases;
   newJson["status"] = newDevice.status;
 
-  meterLogger_->debug("{}", newJson.dump());
+  masterLogger_->debug("{}", newJson.dump());
 
   // ---- Commit values ----
   {
@@ -625,7 +625,7 @@ std::expected<void, ModbusError> Meter::updateDeviceAndJson() {
   return {};
 }
 
-void Meter::runLoop() {
+void MeterMaster::runLoop() {
 
   while (handler_.isRunning()) {
 
@@ -672,5 +672,5 @@ void Meter::runLoop() {
     }
   }
 
-  meterLogger_->debug("Meter run loop stopped.");
+  masterLogger_->debug("Meter run loop stopped.");
 }

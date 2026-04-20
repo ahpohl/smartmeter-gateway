@@ -45,31 +45,26 @@ smartmeter-gateway is configured via a YAML file. Below is a complete example fo
 
 ```yaml
 meter:
-  device: /dev/ttyUSB0
-  preset: od_type
-  #baud: 9600
-  #data_bits: 7
-  #stop_bits: 1
-  #parity: even   # none | even | odd
-  grid:
-    power_factor: 0.95
-    frequency: 50.00
-
-modbus:
-  tcp:
-    listen: 0.0.0.0
-    port: 502
-  rtu:
-    device: /dev/ttyUSB1
-    preset: sd_type
-    #baud: 9600
-    #data_bits: 8
-    #stop_bits: 1
-    #parity: none   # none | even | odd
-  slave_id: 1
-  request_timeout: 5
-  idle_timeout: 60
-  use_float_model: false
+  master:
+    rtu:
+      device: /dev/ttyUSB0
+      baud: 9600
+      data_bits: 7
+      stop_bits: 1
+      parity: even    # none | even | odd
+    unit_id: 1
+    grid:
+      power_factor: 0.95
+      frequency: 50.00
+      leading: false  # false = inductive (lagging), true = capacitive (leading)
+  slave:
+    tcp:
+      listen: 0.0.0.0
+      port: 502
+    unit_id: 1
+    request_timeout: 5
+    idle_timeout: 60
+    use_float_model: false
 
 mqtt:
   broker: localhost
@@ -87,45 +82,49 @@ logger:
   level: info     # global default: off | error | warn | info | debug | trace
   modules:
     main: info
-    meter: info
-    modbus: info
     mqtt: info
+    meter:
+      master: info
+      slave: info
 ```
 
 ### Configuration reference
 
 - meter
-  - device: Serial device path of the IR head
-  - preset: Serial preset for the meter interface
-     - od_type: Optical device preset for the IR port on the meter, 9600 baud, 7 data bits, even parity, 1 stop bit (9600 7E1)
-    - sd_type: Standard device, multi functional preset, 9600 baud, 8 data bits, no parity, 1 stop bit (9600 8N1)
-  - Note: you can override the preset by specifying any of the individual parameters below. If no preset is given, then all of the individual parameters must be provided
-    - baud: Baud rate (e.g. 9600, 19200, 38400).
-    - data_bits: Data bits (5,6,7,8)
-    - stop_bits: Stop bits (1,2)
-    - parity: Parity, allowed values are none, even, odd
-  - grid (optional)
-    - power_factor: Assumed PF used to derive apparent/reactive power (default 0.95)
-    - frequency: Assumed mains frequency (required for simulation of a Fronius meter, default 50 Hz)
-
-- modbus
-  - Note: Configure at least one transport (tcp or rtu). If both are configured, TCP takes precedence over RTU
-  - tcp
-    - listen: Bind address for Modbus TCP slave (IPv4 or IPv6), e.g. 0.0.0.0 or ::
-    - port: TCP port for Modbus (default 502)
-  - rtu
-    - device: Serial device path (e.g. /dev/ttyUSB1)
-    - preset: Serial preset for RTU line settings (od_type or sd_type), see meter config
-  - slave_id: Modbus unit/slave ID (typically 1)
-  - request_timeout: timeout between requests (indications) from the master (seconds)
-  - idle_timeout: disconnect client if no activity (seconds)
-  - use_float_model
+  - master *(required)* — Modbus master that reads from the smart meter
+    - Note: exactly one of tcp or rtu must be configured
+    - tcp
+      - host: Hostname or IP of the Modbus TCP slave to connect to
+      - port: TCP port (default 502)
+    - rtu
+      - device: Serial device path (e.g. /dev/ttyUSB0)
+      - baud: Baud rate (e.g. 9600, 19200, 38400)
+      - data_bits: Data bits (5, 6, 7, 8)
+      - stop_bits: Stop bits (1, 2)
+      - parity: Parity — none, even, odd
+    - unit_id: Modbus unit/slave ID of the smart meter (1–247, default 1)
+    - grid *(optional)* — assumed grid parameters used to derive apparent/reactive power
+      - power_factor: Assumed power factor (0.0–1.0, default 0.95)
+      - frequency: Assumed mains frequency in Hz (default 50.0)
+      - leading: false = inductive/lagging (default), true = capacitive/leading
+  - slave *(optional)* — Modbus slave that re-exposes meter values to other clients
+    - Note: exactly one of tcp or rtu must be configured; master and slave cannot share the same RTU device
+    - tcp
+      - listen: Bind address for Modbus TCP slave (IPv4 or IPv6), e.g. 0.0.0.0 or ::
+      - port: TCP port (default 502)
+    - rtu
+      - device: Serial device path (e.g. /dev/ttyUSB1)
+      - baud, data_bits, stop_bits, parity: same as master.rtu above
+    - unit_id: Modbus unit/slave ID to respond as (1–247, default 1)
+    - request_timeout: timeout between requests from the master in seconds (default 5)
+    - idle_timeout: disconnect client after this many seconds of inactivity (default 60); must be >= request_timeout
+    - use_float_model
       - true: exposes values using float registers
-      - false: uses integer + scale factor registers
+      - false: uses integer + scale factor registers (default)
 
 - mqtt
   - broker: Hostname or IP of the MQTT broker. 
-  - port: MQTT broker port (1883 for unencrypted, 8883 for TLS, if supported by your setup).
+  - port: MQTT broker port (default 1883; note: TLS is not yet supported).
   - topic: Base MQTT topic to publish under (e.g., smartmeter-gateway). Subtopics may be used for values/device/availability info.
   - user: Optional username for broker authentication.
   - password: Optional password for broker authentication.
@@ -139,19 +138,14 @@ logger:
   - level: Global default log level. Accepted values: off, error, warn, info, debug, trace.
   - modules: Per-module overrides for log levels.
     - main: Log level for the main module
-    - meter: Log level for meter parsing/IO
     - mqtt: Log level for MQTT client interactions
-    - modbus: Log level for Modbus
+    - meter.master: Log level for the Modbus master (meter reading)
+    - meter.slave: Log level for the Modbus slave
   Notes:
   - A module's level overrides the global level for that module.
-  - Use debug/trace when troubleshooting connectivity or protocol issues.
 
 
 ## MQTT publishing
-
-- Messages are published as JSON strings under the configured base topic.
-- Subtopics include values (telemetry), device info (static metadata), and availability (connection state).
-- Consumers should handle retained/non-retained semantics as configured by your deployment (and broker defaults).
 
 ### Topics and example payloads
 
@@ -264,7 +258,7 @@ The smart meter telegram provides active power (<code>P</code>, in W). Because t
 - <code>pf &gt; 0</code>: lagging (inductive) ⇒ <code>Q &gt; 0</code>
 - <code>pf &lt; 0</code>: leading (capacitive / feed-in) ⇒ <code>Q &lt; 0</code>
 
-The gateway additionally derives:
+Derived quantities:
 
 1) Apparent power <code>S</code> (in VA): <code>S = |P| / |pf|</code>
 2) Reactive power <code>Q</code> (in var): <code>|Q| = |P| * tan(acos(|pf|))</code>
@@ -284,25 +278,23 @@ The gateway derives phase-to-phase (line-to-line) voltages from the measured pha
 - <code>V<sub>23</sub> = sqrt(V<sub>2</sub><sup>2</sup> + V<sub>3</sub><sup>2</sup> + V<sub>2</sub>·V<sub>3</sub>)</code>
 - <code>V<sub>31</sub> = sqrt(V<sub>3</sub><sup>2</sup> + V<sub>1</sub><sup>2</sup> + V<sub>3</sub>·V<sub>1</sub>)</code>
 
-And the published aggregate <code>voltage_pp</code> is the mean of these three values:
 - <code>voltage_pp = (V<sub>12</sub> + V<sub>23</sub> + V<sub>31</sub>) / 3</code>
 
 ### MQTT publish defaults
 
-- QoS: 1
-- Retained: true
-- Duplicate suppression: the publisher suppresses consecutive duplicates per topic (hash comparison of payload).
-- Queueing: messages are queued per topic up to mqtt.queue_size and published when connected; reconnect uses exponential backoff as configured.
+- QoS: 1, retained: true
+- Duplicate suppression: consecutive duplicates per topic are suppressed (hash comparison of payload).
+- Queueing: messages are queued per topic up to `mqtt.queue_size` and published when connected; reconnect uses exponential backoff as configured.
 - Consumers should be prepared to receive retained messages on subscribe and handle at-least-once delivery semantics.
 
 ## Troubleshooting
 
 - Master (client) connection timeouts: 
-  - Increase modbus.response_timeout
-  - Verify slave_id and transport (TCP vs RTU) match your setup.
+  - Verify unit_id and transport (TCP vs RTU) match your meter's settings.
+  - Check serial parameters (baud, data_bits, parity) match the meter's IR port configuration.
 - Frequent reconnects:
   - Check broker reachability and credentials.
-  - Adjust `mqtt.reconnect_delay` and `modbus.reconnect_delay` backoff ranges.
+  - Adjust `mqtt.reconnect_delay` backoff ranges.
 - Permission denied opening the serial device
   - Inspect device permissions (e.g. `ls -la`)
   - Add the runtime user to the appropriate group

@@ -17,8 +17,7 @@ MqttClient::MqttClient(const MqttConfig &cfg, SignalHandler &signalHandler)
   mosquitto_lib_init();
   mosq_ = mosquitto_new(nullptr, true, this);
   if (!mosq_) {
-    mqttLogger_->critical("Failed to create mosquitto client");
-    handler_.shutdown();
+    throw std::runtime_error("Failed to create mosquitto client");
   }
 
   // Set username/password if provided
@@ -28,9 +27,9 @@ MqttClient::MqttClient(const MqttConfig &cfg, SignalHandler &signalHandler)
   }
 
   // Configure automatic reconnect delay
-  mosquitto_reconnect_delay_set(mosq_, cfg_.reconnectDelay->min,
-                                cfg_.reconnectDelay->max,
-                                cfg_.reconnectDelay->exponential);
+  mosquitto_reconnect_delay_set(mosq_, cfg_.reconnectDelay.min,
+                                cfg_.reconnectDelay.max,
+                                cfg_.reconnectDelay.exponential);
 
   // Set Mosquitto callbacks
   mosquitto_connect_callback_set(mosq_, MqttClient::onConnect);
@@ -40,9 +39,12 @@ MqttClient::MqttClient(const MqttConfig &cfg, SignalHandler &signalHandler)
   // Start Mosquitto network loop
   int rc = mosquitto_loop_start(mosq_);
   if (rc != MOSQ_ERR_SUCCESS) {
-    mqttLogger_->critical("Failed to start mosquitto network loop: {} ({})",
-                          mosquitto_strerror(rc), rc);
-    handler_.shutdown();
+    mosquitto_destroy(mosq_);
+    mosq_ = nullptr;
+    mosquitto_lib_cleanup();
+    throw std::runtime_error(
+        std::format("Failed to start mosquitto network loop: {} ({})",
+                    mosquitto_strerror(rc), rc));
   }
 
   // Connect to broker

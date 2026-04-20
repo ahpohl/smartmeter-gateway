@@ -1,5 +1,5 @@
-#ifndef MODBUS_SLAVE_H_
-#define MODBUS_SLAVE_H_
+#ifndef METER_SLAVE_H_
+#define METER_SLAVE_H_
 
 #include "config_yaml.h"
 #include "meter_types.h"
@@ -13,17 +13,17 @@
 #include <poll.h>
 #include <thread>
 
-class ModbusSlave {
+class MeterSlave {
 public:
-  ModbusSlave(const ModbusRootConfig &cfg, SignalHandler &signalHandler);
-  virtual ~ModbusSlave();
+  MeterSlave(const MeterSlaveConfig &cfg, SignalHandler &signalHandler);
+  virtual ~MeterSlave();
   void updateValues(MeterTypes::Values values);
   void updateDevice(MeterTypes::Device device);
   static constexpr int MODBUS_REGISTERS = 65535;
 
 private:
   std::shared_ptr<spdlog::logger> modbusLogger_;
-  const ModbusRootConfig &cfg_;
+  const MeterSlaveConfig &cfg_;
   MeterTypes::ErrorAction
   handleResult(std::expected<void, ModbusError> &&result);
 
@@ -52,4 +52,4 @@ private:
   std::vector<std::thread> clientThreads_;
 };
 
-#endif /* MODBUS_SLAVE_H_ */
+#endif /* METER_SLAVE_H_ */

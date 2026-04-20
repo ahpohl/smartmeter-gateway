@@ -1,93 +1,131 @@
 #ifndef CONFIG_YAML_HPP
 #define CONFIG_YAML_HPP
 
-#include "meter_types.h"
 #include <map>
 #include <optional>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <termios.h>
 
-// --- Modbus TCP config ---
-struct ModbusTcpConfig {
-  std::string listen;
-  int port;
+// ---------------------------------------------------------------------------
+// Serial types
+// ---------------------------------------------------------------------------
+
+enum class Parity { None, Even, Odd };
+
+// ---------------------------------------------------------------------------
+// Conversion helpers (defined in config_yaml.cpp)
+// ---------------------------------------------------------------------------
+
+char parityToChar(Parity parity);
+speed_t baudToSpeed(int baud);
+tcflag_t dataBitsToFlag(int dataBits);
+void applyParity(termios &tty, Parity parity);
+
+// ---------------------------------------------------------------------------
+// Modbus transport configs
+// ---------------------------------------------------------------------------
+
+struct ModbusTcpClientConfig {
+  std::string host;
+  int port{502};
 };
 
-// --- Modbus RTU config ---
+struct ModbusTcpServerConfig {
+  std::string listen{"0.0.0.0"};
+  int port{502};
+};
+
 struct ModbusRtuConfig {
   std::string device;
-  int baud;
-  int dataBits;
-  int stopBits;
-  MeterTypes::Parity parity;
+  int baud{9600};
+  int dataBits{8};
+  int stopBits{1};
+  Parity parity{Parity::None};
 };
 
-// --- MQTT reconnect delay config ---
+// ---------------------------------------------------------------------------
+// Shared sub-configs
+// ---------------------------------------------------------------------------
+
 struct ReconnectDelayConfig {
-  int min;
-  int max;
-  bool exponential;
+  int min{5};
+  int max{320};
+  bool exponential{true};
 };
+
+struct ResponseTimeoutConfig {
+  int sec{5};
+  int usec{0};
+};
+
+// ---------------------------------------------------------------------------
+// Meter configs
+// ---------------------------------------------------------------------------
 
 // --- Grid config ---
 struct GridConfig {
-  double powerFactor;
-  double frequency;
+  double powerFactor{0.95};
+  double frequency{50.0};
   bool isLeading{false};
 };
 
-// Meter config
-struct MeterConfig {
-  std::string device;
-  int baud;
-  int dataBits;
-  int stopBits;
-  MeterTypes::Parity parity;
-  std::optional<GridConfig> grid;
-};
-
-// --- Root Modbus config ---
-struct ModbusRootConfig {
-  std::optional<ModbusTcpConfig> tcp;
+struct MeterMasterConfig {
+  std::optional<ModbusTcpClientConfig> tcp;
   std::optional<ModbusRtuConfig> rtu;
-
   int slaveId{1};
-  int requestTimeout;
-  int idleTimeout;
-  bool useFloatModel;
+  GridConfig grid;
 };
 
+struct MeterSlaveConfig {
+  std::optional<ModbusTcpServerConfig> tcp;
+  std::optional<ModbusRtuConfig> rtu;
+  int slaveId{1};
+  int requestTimeout{5};
+  int idleTimeout{60};
+  bool useFloatModel{false};
+};
+
+struct MeterConfig {
+  MeterMasterConfig master;
+  std::optional<MeterSlaveConfig> slave;
+};
+
+// ---------------------------------------------------------------------------
 // MQTT config
+// ---------------------------------------------------------------------------
+
 struct MqttConfig {
-  std::string broker;
-  int port;
+  std::string broker{"localhost"};
+  int port{1883};
   std::string topic;
   std::optional<std::string> user;
   std::optional<std::string> password;
-  size_t queueSize;
-
-  // Optional retry parameters
-  std::optional<ReconnectDelayConfig> reconnectDelay;
+  size_t queueSize{100};
+  ReconnectDelayConfig reconnectDelay;
 };
 
-// --- Logger config ---
+// ---------------------------------------------------------------------------
+// Logger config
+// ---------------------------------------------------------------------------
+
 struct LoggerConfig {
-  spdlog::level::level_enum globalLevel = spdlog::level::info;
+  spdlog::level::level_enum globalLevel{spdlog::level::info};
   std::map<std::string, spdlog::level::level_enum> moduleLevels;
 };
 
+// ---------------------------------------------------------------------------
 // Root config
-struct Config {
+// ---------------------------------------------------------------------------
+
+struct AppConfig {
   MeterConfig meter;
   MqttConfig mqtt;
   LoggerConfig logger;
-  std::optional<ModbusRootConfig> modbus;
 };
 
-// Forward declaration
-Config loadConfig(const std::string &path);
+AppConfig loadConfig(const std::string &path);
 
-// Small helper to convert std::optional<std::string> → const char*
 inline const char *opt_c_str(const std::optional<std::string> &s) {
   return s ? s->c_str() : nullptr;
 }
